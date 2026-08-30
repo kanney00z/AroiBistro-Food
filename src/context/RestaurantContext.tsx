@@ -391,7 +391,26 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false);
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
   const [isOrderTrackerOpen, setIsOrderTrackerOpen] = useState(false);
-  const [activeCustomerOrder, setActiveCustomerOrder] = useState<Order | null>(orders[0] || null);
+  const [activeCustomerOrder, setActiveCustomerOrder] = useState<Order | null>(() => {
+    try {
+      const savedOrderId = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}my_active_order_id`);
+      if (savedOrderId) {
+        const savedOrders = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}orders`);
+        if (savedOrders) {
+          const parsedOrders: Order[] = JSON.parse(savedOrders);
+          const match = parsedOrders.find(
+            (o) => o.id === savedOrderId || o.orderNumber === savedOrderId
+          );
+          if (match && match.orderStatus !== 'completed' && match.orderStatus !== 'cancelled') {
+            return match;
+          }
+        }
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  });
 
   // App mode
   const [isAdminMode, setIsAdminMode] = useState(false);
@@ -578,6 +597,40 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(`${LOCAL_STORAGE_PREFIX}deliveryLocation`, JSON.stringify(deliveryLocation));
     }
   }, [deliveryLocation]);
+
+  // Keep activeCustomerOrder updated from orders and synced to localStorage
+  useEffect(() => {
+    if (activeCustomerOrder) {
+      const found = orders.find(
+        (o) => o.id === activeCustomerOrder.id || o.orderNumber === activeCustomerOrder.orderNumber
+      );
+      if (found) {
+        if (
+          found.orderStatus !== activeCustomerOrder.orderStatus ||
+          found.items.length !== activeCustomerOrder.items.length ||
+          found.roundsCount !== activeCustomerOrder.roundsCount ||
+          found.paymentStatus !== activeCustomerOrder.paymentStatus
+        ) {
+          setActiveCustomerOrder(found);
+        }
+      }
+      if (activeCustomerOrder.orderStatus !== 'completed' && activeCustomerOrder.orderStatus !== 'cancelled') {
+        safeLocalStorageSet(`${LOCAL_STORAGE_PREFIX}my_active_order_id`, activeCustomerOrder.id);
+      } else {
+        try {
+          localStorage.removeItem(`${LOCAL_STORAGE_PREFIX}my_active_order_id`);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    } else {
+      try {
+        localStorage.removeItem(`${LOCAL_STORAGE_PREFIX}my_active_order_id`);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, [orders, activeCustomerOrder]);
 
   // URL table query param listener on load / popstate
   useEffect(() => {

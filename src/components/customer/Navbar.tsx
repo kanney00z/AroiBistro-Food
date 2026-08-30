@@ -149,7 +149,7 @@ export const Navbar: React.FC<NavbarProps> = ({ searchQuery, setSearchQuery }) =
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             
             {/* Live Order Tracker Trigger (If active order) */}
-            {activeCustomerOrder && (
+            {activeCustomerOrder && activeCustomerOrder.orderStatus !== 'completed' && activeCustomerOrder.orderStatus !== 'cancelled' && (
               <motion.button
                 id="btn-nav-order-tracker"
                 initial={{ scale: 0.9, opacity: 0 }}

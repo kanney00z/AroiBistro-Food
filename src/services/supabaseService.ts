@@ -281,7 +281,16 @@ CREATE POLICY "Public Anon Access settings" ON public.settings FOR ALL TO anon, 
 DROP POLICY IF EXISTS "Public Anon Access store_events" ON public.store_events;
 CREATE POLICY "Public Anon Access store_events" ON public.store_events FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
--- 9. Enable Realtime Publications for all tables
+-- 9. Enable Replica Identity Full (Required for Realtime UPDATE/DELETE payloads)
+ALTER TABLE public.categories REPLICA IDENTITY FULL;
+ALTER TABLE public.menu_items REPLICA IDENTITY FULL;
+ALTER TABLE public.orders REPLICA IDENTITY FULL;
+ALTER TABLE public.tables REPLICA IDENTITY FULL;
+ALTER TABLE public.promos REPLICA IDENTITY FULL;
+ALTER TABLE public.settings REPLICA IDENTITY FULL;
+ALTER TABLE public.store_events REPLICA IDENTITY FULL;
+
+-- 10. Enable Realtime Publications for all tables
 ALTER PUBLICATION supabase_realtime ADD TABLE public.categories;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.menu_items;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;

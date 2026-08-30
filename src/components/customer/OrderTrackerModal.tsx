@@ -454,14 +454,28 @@ export const OrderTrackerModal: React.FC = () => {
           </div>
 
           {/* Footer */}
-          <div className="p-4 bg-[#0A0A0B] border-t border-white/10 text-center">
-            <button
-              id="btn-close-tracker-bottom"
-              onClick={() => setIsOrderTrackerOpen(false)}
-              className="w-full py-3 rounded-xl bg-[#161618] hover:bg-[#202024] border border-white/10 text-stone-300 hover:text-white text-xs font-bold transition-colors cursor-pointer"
-            >
-              ย่อหน้าต่าง (ระบบติดตามอัตโนมัติ)
-            </button>
+          <div className="p-4 bg-[#0A0A0B] border-t border-white/10 text-center flex items-center gap-2">
+            {currentOrder.orderStatus === 'completed' || currentOrder.orderStatus === 'cancelled' ? (
+              <button
+                id="btn-dismiss-completed-tracker"
+                onClick={() => {
+                  setActiveCustomerOrder(null);
+                  setIsOrderTrackerOpen(false);
+                  showToast('ปิดการติดตามออเดอร์เรียบร้อยแล้ว ✨', 'info');
+                }}
+                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors cursor-pointer shadow-md"
+              >
+                ✓ เสร็จสิ้น / ปิดการติดตาม (พร้อมสั่งออเดอร์ใหม่)
+              </button>
+            ) : (
+              <button
+                id="btn-close-tracker-bottom"
+                onClick={() => setIsOrderTrackerOpen(false)}
+                className="w-full py-3 rounded-xl bg-[#161618] hover:bg-[#202024] border border-white/10 text-stone-300 hover:text-white text-xs font-bold transition-colors cursor-pointer"
+              >
+                ย่อหน้าต่าง (ระบบติดตามอัตโนมัติ)
+              </button>
+            )}
           </div>
         </motion.div>
 

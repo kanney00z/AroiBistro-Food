@@ -83,10 +83,12 @@ class RealtimeSyncManager {
   private localBroadcastChannel: BroadcastChannel | null = null;
   private callbacks: RealtimeListenerCallbacks = {};
   private connectionStatus: 'connected' | 'connecting' | 'disconnected' | 'not_configured' | 'error' = 'not_configured';
-  private pingInterval: number | null = null;
+  private autoSyncInterval: any = null;
+  private isSilentSyncing = false;
+  private lastSyncedSignature = '';
 
   constructor() {
-    // Initialize standard Web BroadcastChannel for instant local multi-tab sync
+    // 1. Initialize standard Web BroadcastChannel for instant local multi-tab sync
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
         this.localBroadcastChannel = new BroadcastChannel('aroibistro_realtime_local_bus');
@@ -97,6 +99,31 @@ class RealtimeSyncManager {
         console.warn('BroadcastChannel not supported in this environment:', err);
       }
     }
+
+    // 2. Set up window lifecycle listeners for instant wake-up sync across devices
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', () => {
+        this.syncLatestSilently();
+      });
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          this.syncLatestSilently();
+        }
+      });
+
+      window.addEventListener('online', () => {
+        this.initRealtime();
+        this.syncLatestSilently();
+      });
+    }
+
+    // 3. Start high-frequency background sync reconciliation loop (every 3 seconds)
+    if (typeof window !== 'undefined') {
+      this.autoSyncInterval = setInterval(() => {
+        this.syncLatestSilently();
+      }, 3000);
+    }
   }
 
   public setCallbacks(callbacks: RealtimeListenerCallbacks) {
@@ -105,6 +132,42 @@ class RealtimeSyncManager {
 
   public getStatus() {
     return this.connectionStatus;
+  }
+
+  /**
+   * Silent background sync to ensure 100% data freshness across all devices without page reload
+   */
+  public async syncLatestSilently(): Promise<void> {
+    const supabase = getSupabase();
+    if (!supabase || this.isSilentSyncing) return;
+
+    this.isSilentSyncing = true;
+    try {
+      const data = await this.pullAllFromSupabase();
+      if (!data) return;
+
+      // Compute quick state signature to detect if anything changed
+      const sigParts = [
+        data.orders ? `${data.orders.length}_${data.orders[0]?.id}_${data.orders[0]?.orderStatus}` : '0',
+        data.menuItems ? `${data.menuItems.length}_${data.menuItems.filter(m => m.available).length}` : '0',
+        data.tables ? data.tables.map(t => `${t.id}:${t.status}`).join(',') : '0',
+        data.categories ? `${data.categories.length}` : '0',
+        data.promos ? `${data.promos.length}_${data.promos.filter(p => p.active).length}` : '0',
+        data.settings ? JSON.stringify(data.settings) : '0',
+      ];
+      const newSignature = sigParts.join('|||');
+
+      if (newSignature !== this.lastSyncedSignature) {
+        this.lastSyncedSignature = newSignature;
+        if (this.callbacks.onFullStateSync) {
+          this.callbacks.onFullStateSync(data);
+        }
+      }
+    } catch (err) {
+      // Silent error handling for background loop
+    } finally {
+      this.isSilentSyncing = false;
+    }
   }
 
   /**
@@ -188,6 +251,17 @@ class RealtimeSyncManager {
           (payload) => {
             this.handlePostgresSettingsChange(payload);
           }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'store_events' },
+          (payload: any) => {
+            if (payload?.new && (payload.new as any).payload) {
+              const raw = (payload.new as any).payload;
+              const eventMsg = typeof raw === 'string' ? JSON.parse(raw) : raw;
+              this.handleIncomingMessage(eventMsg);
+            }
+          }
         );
 
       // Subscribe to channel
@@ -195,20 +269,7 @@ class RealtimeSyncManager {
         if (status === 'SUBSCRIBED') {
           this.updateStatus('connected', 'เชื่อมต่อ Supabase Realtime สำเร็จ (Real-time Live across all devices) 🟢');
           // Auto-pull initial live data from Supabase immediately on connect
-          try {
-            const initialData = await this.pullAllFromSupabase();
-            if (initialData && this.callbacks.onFullStateSync) {
-              const hasData = (initialData.menuItems && initialData.menuItems.length > 0) ||
-                (initialData.orders && initialData.orders.length > 0) ||
-                (initialData.categories && initialData.categories.length > 0) ||
-                (initialData.tables && initialData.tables.length > 0);
-              if (hasData) {
-                this.callbacks.onFullStateSync(initialData);
-              }
-            }
-          } catch (fetchErr) {
-            console.warn('Initial auto-pull from Supabase skipped or empty:', fetchErr);
-          }
+          this.syncLatestSilently();
         } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
           console.warn('Supabase Realtime status:', status, err);
           this.updateStatus('error', `ไม่สามารถเชื่อมต่อ Realtime: ${err?.message || status}`);
@@ -267,6 +328,15 @@ class RealtimeSyncManager {
       } catch (e) {
         console.warn('Failed to send Supabase realtime broadcast:', e);
       }
+    }
+
+    // 3. Write event to store_events table in Supabase for rock-solid cross-device triggering
+    const supabase = getSupabase();
+    if (supabase) {
+      void supabase.from('store_events').insert({
+        event_type: type,
+        payload: msg,
+      });
     }
   }
 
