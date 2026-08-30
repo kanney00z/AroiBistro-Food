@@ -170,6 +170,20 @@ class RealtimeSyncManager {
         )
         .on(
           'postgres_changes',
+          { event: '*', schema: 'public', table: 'categories' },
+          (payload) => {
+            this.handlePostgresCategoryChange(payload);
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'promos' },
+          (payload) => {
+            this.handlePostgresPromoChange(payload);
+          }
+        )
+        .on(
+          'postgres_changes',
           { event: '*', schema: 'public', table: 'settings' },
           (payload) => {
             this.handlePostgresSettingsChange(payload);
@@ -177,9 +191,24 @@ class RealtimeSyncManager {
         );
 
       // Subscribe to channel
-      this.channel.subscribe((status, err) => {
+      this.channel.subscribe(async (status, err) => {
         if (status === 'SUBSCRIBED') {
           this.updateStatus('connected', 'เชื่อมต่อ Supabase Realtime สำเร็จ (Real-time Live across all devices) 🟢');
+          // Auto-pull initial live data from Supabase immediately on connect
+          try {
+            const initialData = await this.pullAllFromSupabase();
+            if (initialData && this.callbacks.onFullStateSync) {
+              const hasData = (initialData.menuItems && initialData.menuItems.length > 0) ||
+                (initialData.orders && initialData.orders.length > 0) ||
+                (initialData.categories && initialData.categories.length > 0) ||
+                (initialData.tables && initialData.tables.length > 0);
+              if (hasData) {
+                this.callbacks.onFullStateSync(initialData);
+              }
+            }
+          } catch (fetchErr) {
+            console.warn('Initial auto-pull from Supabase skipped or empty:', fetchErr);
+          }
         } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
           console.warn('Supabase Realtime status:', status, err);
           this.updateStatus('error', `ไม่สามารถเชื่อมต่อ Realtime: ${err?.message || status}`);
@@ -387,6 +416,57 @@ class RealtimeSyncManager {
     if (newRow) {
       const table = dbRowToTable(newRow);
       this.callbacks.onTableStatusChanged?.(table.id, table.status);
+      if (table.status === 'available') {
+        this.callbacks.onTableBillCleared?.(table.id);
+      }
+    }
+  }
+
+  /**
+   * Handle PostgreSQL Postgres Changes on 'categories' table
+   */
+  private async handlePostgresCategoryChange(_payload: any) {
+    const supabase = getSupabase();
+    if (!supabase) return;
+    try {
+      const { data } = await supabase.from('categories').select('*').order('display_order', { ascending: true });
+      if (data && this.callbacks.onCategoryUpdated) {
+        const cats: Category[] = data.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          nameEn: c.name_en || '',
+          iconName: c.icon_name || 'Utensils',
+          description: c.description || '',
+        }));
+        this.callbacks.onCategoryUpdated(cats);
+      }
+    } catch (e) {
+      console.warn('Failed to refresh categories on postgres change:', e);
+    }
+  }
+
+  /**
+   * Handle PostgreSQL Postgres Changes on 'promos' table
+   */
+  private async handlePostgresPromoChange(_payload: any) {
+    const supabase = getSupabase();
+    if (!supabase) return;
+    try {
+      const { data } = await supabase.from('promos').select('*');
+      if (data && this.callbacks.onPromoUpdated) {
+        const promoList: PromoCode[] = data.map((p: any) => ({
+          code: p.code,
+          discountType: p.discount_type,
+          value: Number(p.value),
+          minOrder: Number(p.min_order),
+          maxDiscount: p.max_discount ? Number(p.max_discount) : undefined,
+          active: p.active !== false,
+          description: p.description || '',
+        }));
+        this.callbacks.onPromoUpdated(promoList);
+      }
+    } catch (e) {
+      console.warn('Failed to refresh promos on postgres change:', e);
     }
   }
 
