@@ -590,7 +590,7 @@ export function buildTestFlexMessage(settings: RestaurantSettings): any {
 }
 
 /**
- * Sends a message via server endpoint `/api/line/notify` or direct LINE API fallback
+ * Sends a message via server endpoint `/api/line/notify`, `/api/line-notify`, or CORS proxy fallback
  */
 export async function sendLineFlexMessage(
   flexMessage: any,
@@ -608,7 +608,16 @@ export async function sendLineFlexMessage(
     };
   }
 
-  // 1. Try sending via backend server API route first
+  const isPush = Boolean(targetId && targetId.trim());
+  const lineEndpoint = isPush
+    ? 'https://api.line.me/v2/bot/message/push'
+    : 'https://api.line.me/v2/bot/message/broadcast';
+
+  const linePayload = isPush
+    ? { to: targetId!.trim(), messages: [flexMessage] }
+    : { messages: [flexMessage] };
+
+  // 1. Try sending via primary backend endpoint `/api/line/notify`
   try {
     const response = await fetch('/api/line/notify', {
       method: 'POST',
@@ -622,60 +631,91 @@ export async function sendLineFlexMessage(
       }),
     });
 
-    if (response.ok) {
+    const contentType = response.headers.get('content-type') || '';
+    if (response.ok && contentType.includes('application/json')) {
       const data = await response.json();
       return {
         success: true,
-        message: data.message || 'ส่งการแจ้งเตือนเข้า LINE สำเร็จ!',
+        message: data.message || (isPush ? `ส่งแจ้งเตือนไปยัง (${targetId}) สำเร็จ!` : 'ส่งแจ้งเตือนเข้า LINE สำเร็จ!'),
         statusCode: response.status,
         response: data,
       };
-    } else {
-      const errData = await response.json().catch(() => ({}));
-      console.warn('Backend /api/line/notify failed with status:', response.status, errData);
+    } else if (!response.ok && contentType.includes('application/json')) {
+      const errData = await response.json();
+      if (errData.message) {
+        return {
+          success: false,
+          message: errData.message,
+          statusCode: response.status,
+        };
+      }
     }
   } catch (err: any) {
-    console.warn('Backend proxy /api/line/notify not reachable, attempting direct fallback...', err);
+    console.warn('Backend proxy /api/line/notify not reachable:', err);
   }
 
-  // 2. Direct fallback (e.g. if running in standalone static environment)
+  // 2. Try secondary endpoint `/api/line-notify` (Vercel Serverless convention)
   try {
-    const isPush = Boolean(targetId && targetId.trim());
-    const lineEndpoint = isPush
-      ? 'https://api.line.me/v2/bot/message/push'
-      : 'https://api.line.me/v2/bot/message/broadcast';
-
-    const payload = isPush
-      ? { to: targetId!.trim(), messages: [flexMessage] }
-      : { messages: [flexMessage] };
-
-    const directRes = await fetch(lineEndpoint, {
+    const response2 = await fetch('/api/line-notify', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        token,
+        targetId: targetId?.trim() || undefined,
+        messages: [flexMessage],
+      }),
     });
 
-    if (directRes.ok) {
+    const contentType2 = response2.headers.get('content-type') || '';
+    if (response2.ok && contentType2.includes('application/json')) {
+      const data = await response2.json();
       return {
         success: true,
-        message: 'ส่งการแจ้งเตือนเข้า LINE เรียบร้อยแล้ว (Direct API)!',
-        statusCode: directRes.status,
-      };
-    } else {
-      const errText = await directRes.text();
-      return {
-        success: false,
-        message: `LINE API Error (${directRes.status}): ${errText}`,
-        statusCode: directRes.status,
+        message: data.message || 'ส่งแจ้งเตือนเข้า LINE สำเร็จ!',
+        statusCode: response2.status,
+        response: data,
       };
     }
-  } catch (e: any) {
-    return {
-      success: false,
-      message: `เกิดข้อผิดพลาดในการเชื่อมต่อ: ${e.message || e}`,
-    };
+  } catch (err: any) {
+    console.warn('Secondary /api/line-notify not reachable:', err);
   }
+
+  // 3. Fallback for static hosts (using CORS Proxy to avoid browser CORS "Failed to fetch")
+  const proxyEndpoints = [
+    `https://corsproxy.io/?url=${encodeURIComponent(lineEndpoint)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(lineEndpoint)}`,
+  ];
+
+  for (const proxyUrl of proxyEndpoints) {
+    try {
+      const proxyRes = await fetch(proxyUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(linePayload),
+      });
+
+      if (proxyRes.ok) {
+        return {
+          success: true,
+          message: 'ส่งการแจ้งเตือนเข้า LINE เรียบร้อยแล้ว (ผ่าน Proxy)! 🔔',
+          statusCode: proxyRes.status,
+        };
+      } else {
+        const errText = await proxyRes.text();
+        console.warn('Proxy response error:', proxyRes.status, errText);
+      }
+    } catch (e: any) {
+      console.warn(`Proxy ${proxyUrl} failed:`, e);
+    }
+  }
+
+  return {
+    success: false,
+    message: 'ไม่สามารถส่งข้อความเข้า LINE ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตหรือ Channel Access Token',
+  };
 }
