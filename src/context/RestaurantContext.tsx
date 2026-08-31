@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   MenuItem,
   CartItem,
@@ -809,16 +809,41 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  // Active table order detection (if dine in and open order exists)
-  const activeTableOrder =
-    orderType === 'dine_in' && selectedTable
-      ? orders.find(
-          (o) =>
-            o.orderType === 'dine_in' &&
-            o.tableNumber === selectedTable &&
-            (o.orderStatus === 'pending' || o.orderStatus === 'cooking' || o.orderStatus === 'ready')
-        ) || null
-      : null;
+  // Active table / customer order detection for merging (Round 2+ into same bill)
+  const activeTableOrder: Order | null = useMemo(() => {
+    // 1. If table is specified for dine-in, search by tableNumber in active orders
+    if (orderType === 'dine_in' && selectedTable) {
+      const cleanTable = selectedTable.trim().toUpperCase();
+      const byTable = orders.find(
+        (o) =>
+          o.orderType === 'dine_in' &&
+          o.tableNumber &&
+          (o.tableNumber.trim().toUpperCase() === cleanTable ||
+            o.tableNumber.replace(/\D/g, '') === cleanTable.replace(/\D/g, '')) &&
+          o.orderStatus !== 'completed' &&
+          o.orderStatus !== 'cancelled'
+      );
+      if (byTable) return byTable;
+    }
+
+    // 2. Otherwise check this customer's active order session on this device
+    if (
+      activeCustomerOrder &&
+      activeCustomerOrder.orderStatus !== 'completed' &&
+      activeCustomerOrder.orderStatus !== 'cancelled'
+    ) {
+      const matchInOrders = orders.find(
+        (o) =>
+          (o.id === activeCustomerOrder.id || o.orderNumber === activeCustomerOrder.orderNumber) &&
+          o.orderStatus !== 'completed' &&
+          o.orderStatus !== 'cancelled'
+      );
+      if (matchInOrders) return matchInOrders;
+      return activeCustomerOrder;
+    }
+
+    return null;
+  }, [orders, orderType, selectedTable, activeCustomerOrder]);
 
   const isAddingToExistingOrder = Boolean(activeTableOrder);
 
@@ -1112,15 +1137,15 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return null as any;
     }
 
-    // 1. If Dine-in and there is already an active order for this table, merge into the existing bill!
-    if (orderType === 'dine_in' && activeTableOrder) {
+    // 1. If there is already an active order for this table/customer session, merge into the existing bill!
+    if (activeTableOrder) {
       const newRoundNumber = (activeTableOrder.roundsCount || 1) + 1;
       const addedAt = new Date().toISOString();
 
       const newItemsWithRound: CartItem[] = cart.map((ci) => ({
         ...ci,
         round: newRoundNumber,
-        packagingType: ci.packagingType || 'dine_in',
+        packagingType: ci.packagingType || (orderType === 'dine_in' ? 'dine_in' : 'takeaway'),
         addedAt,
       }));
 
@@ -1142,7 +1167,7 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
 
       const afterDisc = Math.max(0, combinedSubtotal - combinedDiscount);
-      const combinedServiceCharge = settings.enableServiceCharge
+      const combinedServiceCharge = (activeTableOrder.orderType === 'dine_in' && settings.enableServiceCharge)
         ? Math.round(afterDisc * settings.serviceChargeRate * 10) / 10
         : 0;
       const combinedTotal = afterDisc + combinedServiceCharge;
@@ -1170,12 +1195,18 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       setOrders((prev) => prev.map((ord) => (ord.id === activeTableOrder.id ? updatedOrder : ord)));
       setActiveCustomerOrder(updatedOrder);
+
+      // Persist to Supabase and Broadcast to other devices (Kitchen, POS, Admin)
+      realtimeManager.persistOrder(updatedOrder);
+      realtimeManager.broadcast('ORDER_UPDATED', { order: updatedOrder });
+      audioChime.playNewOrderBell();
+
       clearCart();
       setIsCheckoutModalOpen(false);
       setIsCartDrawerOpen(false);
       setIsOrderTrackerOpen(true);
       showToast(
-        `สั่งอาหารเพิ่มเข้าบิลเดิม #${activeTableOrder.orderNumber} (โต๊ะ ${selectedTable}) สำเร็จ! (รอบที่ ${newRoundNumber}) 🍳`,
+        `สั่งอาหารเพิ่มเข้าบิลเดิม #${activeTableOrder.orderNumber} ${activeTableOrder.tableNumber ? `(โต๊ะ ${activeTableOrder.tableNumber})` : ''} สำเร็จ! (รอบที่ ${newRoundNumber}) 🍳`,
         'success'
       );
 

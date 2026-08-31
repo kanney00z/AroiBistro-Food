@@ -247,8 +247,8 @@ export const CheckoutModal: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-display font-black text-xl text-white">
-                  {orderType === 'dine_in' && isAddingToExistingOrder
-                    ? `สั่งอาหารเพิ่มเข้าบิลเดิม (รอบที่ ${(activeTableOrder?.roundsCount || 1) + 1})`
+                  {isAddingToExistingOrder && activeTableOrder
+                    ? `สั่งอาหารเพิ่มเข้าบิลเดิม #${activeTableOrder.orderNumber} (รอบที่ ${(activeTableOrder?.roundsCount || 1) + 1})`
                     : 'ยืนยันการสั่งและชำระเงิน'}
                 </h3>
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
@@ -256,8 +256,11 @@ export const CheckoutModal: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs text-stone-400 font-bold uppercase tracking-wider mt-0.5">
-                {orderType === 'dine_in' && `ทานที่ร้าน • โต๊ะ ${selectedTable} ${isAddingToExistingOrder ? `(บิล #${activeTableOrder?.orderNumber})` : ''}`}
-                {orderType === 'pickup' && `รับอาหารกลับบ้าน`}
+                {isAddingToExistingOrder && activeTableOrder
+                  ? `เพิ่มรายการเข้าบิลเดิม #${activeTableOrder.orderNumber} ${activeTableOrder.tableNumber ? `• โต๊ะ ${activeTableOrder.tableNumber}` : ''}`
+                  : orderType === 'dine_in'
+                  ? `ทานที่ร้าน • โต๊ะ ${selectedTable || 'เคาน์เตอร์'}`
+                  : `รับอาหารกลับบ้าน`}
               </p>
             </div>
 

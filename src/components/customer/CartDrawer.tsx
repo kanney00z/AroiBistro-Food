@@ -286,8 +286,8 @@ export const CartDrawer: React.FC = () => {
                 </div>
               )}
 
-              {/* Existing Bill Notice for Dine-In Table */}
-              {orderType === 'dine_in' && isAddingToExistingOrder && activeTableOrder && (
+              {/* Existing Bill Notice */}
+              {isAddingToExistingOrder && activeTableOrder && (
                 <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-1.5">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs">
@@ -299,7 +299,7 @@ export const CartDrawer: React.FC = () => {
                     </span>
                   </div>
                   <p className="text-[11px] text-amber-200/90 leading-relaxed">
-                    อาหารที่คุณเลือกจะถูก<strong>เพิ่มเข้าไปในบิลเดิมของโต๊ะ {selectedTable}</strong> ทันที ไม่ต้องเปิดบิลใหม่!
+                    อาหารที่คุณเลือกจะถูก<strong>เพิ่มเข้าไปในบิลเดิม #{activeTableOrder.orderNumber} {activeTableOrder.tableNumber ? `(โต๊ะ ${activeTableOrder.tableNumber})` : ''}</strong> ทันที ไม่ต้องเปิดบิลใหม่!
                   </p>
                 </div>
               )}
