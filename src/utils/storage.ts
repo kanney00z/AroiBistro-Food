@@ -2,7 +2,7 @@
  * Safe localStorage utilities to prevent QuotaExceededError crashes
  */
 
-import { Order } from '../types';
+import { Order, MenuItem } from '../types';
 
 /**
  * Safely saves a key-value pair to localStorage with try-catch
@@ -14,6 +14,30 @@ export function safeLocalStorageSet(key: string, value: string): boolean {
   } catch (error) {
     console.warn(`[Storage] Failed to save key "${key}" to localStorage:`, error);
     return false;
+  }
+}
+
+/**
+ * Safely saves menuItems array to localStorage with fallback protection
+ */
+export function safeSaveMenuToStorage(storageKey: string, menuItems: MenuItem[]): void {
+  try {
+    // Attempt 1: Direct save
+    localStorage.setItem(storageKey, JSON.stringify(menuItems));
+  } catch (err) {
+    console.warn('[Storage] Quota exceeded on full menu save. Attempting fallback cleanup...', err);
+    try {
+      // Clear legacy unused keys if any
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && !k.startsWith('aroibistro_')) {
+          localStorage.removeItem(k);
+        }
+      }
+      localStorage.setItem(storageKey, JSON.stringify(menuItems));
+    } catch (err2) {
+      console.error('[Storage] Critical: Unable to persist menu items to localStorage:', err2);
+    }
   }
 }
 

@@ -25,7 +25,7 @@ import {
   DEFAULT_HERO_BANNER,
 } from '../data/mockData';
 import { getStoreStatus } from '../utils/storeHours';
-import { safeSaveOrdersToStorage, safeLocalStorageSet } from '../utils/storage';
+import { safeSaveOrdersToStorage, safeSaveMenuToStorage, safeLocalStorageSet } from '../utils/storage';
 import { realtimeManager } from '../services/realtimeSync';
 import { audioChime } from '../utils/audioChime';
 import {
@@ -583,7 +583,7 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [categories]);
 
   useEffect(() => {
-    safeLocalStorageSet(`${LOCAL_STORAGE_PREFIX}menu`, JSON.stringify(menuItems));
+    safeSaveMenuToStorage(`${LOCAL_STORAGE_PREFIX}menu`, menuItems);
   }, [menuItems]);
 
   useEffect(() => {

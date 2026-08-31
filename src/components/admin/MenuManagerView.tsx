@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Plus,
@@ -20,11 +20,17 @@ import {
   RefreshCw,
   FolderTree,
   Sliders,
+  Camera,
+  AlertTriangle,
+  FileImage,
+  Loader2,
+  Zap,
 } from 'lucide-react';
 import { useRestaurant } from '../../context/RestaurantContext';
 import { MenuItem, OptionGroup } from '../../types';
 import { CategoryManagerModal } from './CategoryManagerModal';
 import { OptionGroupsEditor } from './OptionGroupsEditor';
+import { compressImageFile, formatBytes } from '../../utils/imageCompressor';
 
 // Preset sample food photo library for 1-click selection
 const PRESET_FOOD_IMAGES = [
@@ -119,7 +125,14 @@ export const MenuManagerView: React.FC = () => {
   const [activeModalTab, setActiveModalTab] = useState<'details' | 'options'>('details');
   const [imageTab, setImageTab] = useState<'upload' | 'preset' | 'url'>('upload');
   const [isDragging, setIsDragging] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [compressionStats, setCompressionStats] = useState<{
+    originalSize: number;
+    compressedSize: number;
+  } | null>(null);
+  const [urlImageError, setUrlImageError] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   // Form State for Add / Edit
   const [formData, setFormData] = useState<{
@@ -150,26 +163,71 @@ export const MenuManagerView: React.FC = () => {
     optionGroups: [],
   });
 
-  const handleImageFile = (file: File) => {
+  // Handle image compression from file
+  const handleImageFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       showToast('กรุณาเลือกไฟล์รูปภาพเท่านั้น (JPG, PNG, WEBP, GIF)', 'warning');
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      showToast('ขนาดไฟล์ภาพต้องไม่เกิน 10MB', 'warning');
-      return;
-    }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      if (result) {
-        setFormData((prev) => ({ ...prev, image: result }));
-        showToast(`เลือกรูปภาพ "${file.name}" สำเร็จ`, 'success');
+    try {
+      setIsCompressing(true);
+      setUrlImageError(false);
+
+      // Compress and optimize image to ~30-60KB WebP/JPEG max 800x800
+      const result = await compressImageFile(file, 800, 800, 0.82);
+      
+      setFormData((prev) => ({ ...prev, image: result.dataUrl }));
+      setCompressionStats({
+        originalSize: result.originalSize,
+        compressedSize: result.compressedSize,
+      });
+
+      showToast(
+        `บันทึกรูปภาพ "${file.name}" เรียบร้อย (${formatBytes(result.originalSize)} ➔ ${formatBytes(result.compressedSize)}) ⚡`,
+        'success'
+      );
+    } catch (err: any) {
+      console.error('Image compression error:', err);
+      // Fallback to basic file reader if canvas fails
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const res = e.target?.result as string;
+        if (res) {
+          setFormData((prev) => ({ ...prev, image: res }));
+          showToast(`เลือกรูปภาพ "${file.name}" สำเร็จ`, 'success');
+        }
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsCompressing(false);
+    }
+  };
+
+  // Listen for Clipboard Paste (Ctrl+V / Cmd+V) when modal is open
+  useEffect(() => {
+    if (!isEditModalOpen) return;
+
+    const handlePaste = (e: ClipboardEvent) => {
+      if (e.clipboardData && e.clipboardData.items) {
+        for (let i = 0; i < e.clipboardData.items.length; i++) {
+          const item = e.clipboardData.items[i];
+          if (item.type.indexOf('image') !== -1) {
+            const file = item.getAsFile();
+            if (file) {
+              e.preventDefault();
+              handleImageFile(file);
+              showToast('วางรูปภาพจากคลิปบอร์ด (Clipboard) สำเร็จ! 📋', 'success');
+              break;
+            }
+          }
+        }
       }
     };
-    reader.readAsDataURL(file);
-  };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [isEditModalOpen]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -193,6 +251,8 @@ export const MenuManagerView: React.FC = () => {
     setEditingItem(null);
     setImageTab('upload');
     setActiveModalTab('details');
+    setCompressionStats(null);
+    setUrlImageError(false);
     const firstCategory = categories.find((c) => c.id !== 'all')?.id || 'mains';
     setFormData({
       name: '',
@@ -200,7 +260,7 @@ export const MenuManagerView: React.FC = () => {
       description: '',
       price: 180,
       category: firstCategory,
-      image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=800&q=80',
+      image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80',
       prepTimeMinutes: 15,
       isPopular: false,
       isChefSpecial: false,
@@ -213,8 +273,10 @@ export const MenuManagerView: React.FC = () => {
 
   const handleOpenEditModal = (item: MenuItem) => {
     setEditingItem(item);
-    setImageTab('upload');
+    setImageTab(item.image.startsWith('data:') ? 'upload' : item.image.includes('unsplash') ? 'preset' : 'url');
     setActiveModalTab('details');
+    setCompressionStats(null);
+    setUrlImageError(false);
     setFormData({
       name: item.name,
       nameEn: item.nameEn,
@@ -586,56 +648,107 @@ export const MenuManagerView: React.FC = () => {
                           รูปภาพเมนูอาหาร (Dish Image) *
                         </label>
                         <span className="text-[10px] text-stone-400 font-bold">
-                          เลือกอัปโหลดไฟล์ หรือ เลือกจากคลังภาพ
+                          อัปโหลดไฟล์ / ถ่ายรูป / วางภาพ Ctrl+V / คลังภาพ
                         </span>
                       </div>
 
                       {/* Active Selected Image Preview Box */}
-                      <div className="p-3 rounded-2xl bg-[#0A0A0B] border border-white/10 flex items-center gap-4">
-                        <div className="relative w-20 h-20 rounded-xl overflow-hidden bg-[#161618] border border-white/10 shrink-0">
-                          {formData.image ? (
+                      <div className="p-3.5 rounded-2xl bg-[#0A0A0B] border border-white/10 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                        <div className="relative w-24 h-24 sm:w-20 sm:h-20 rounded-2xl overflow-hidden bg-[#161618] border border-white/15 shrink-0 shadow-md">
+                          {isCompressing ? (
+                            <div className="w-full h-full flex flex-col items-center justify-center bg-[#161618] text-[#FF5C00] gap-1 p-2 text-center">
+                              <Loader2 className="w-6 h-6 animate-spin" />
+                              <span className="text-[9px] font-bold text-stone-300">กำลังบีบอัดภาพ...</span>
+                            </div>
+                          ) : formData.image && !urlImageError ? (
                             <img
                               src={formData.image}
                               alt="Menu Preview"
                               className="w-full h-full object-cover"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).src =
-                                  'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80';
+                              onError={() => {
+                                setUrlImageError(true);
                               }}
                             />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center text-stone-500">
-                              <ImageIcon className="w-8 h-8" />
+                            <div className="w-full h-full flex flex-col items-center justify-center text-rose-400 bg-rose-950/30 p-2 text-center">
+                              <AlertTriangle className="w-5 h-5 mb-0.5" />
+                              <span className="text-[9px] font-bold">ภาพโหลดไม่สำเร็จ</span>
                             </div>
                           )}
                         </div>
+
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-white">รูปภาพปัจจุบัน</span>
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FF5C00]/20 text-[#FF5C00] border border-[#FF5C00]/30">
-                              พร้อมใช้งาน
-                            </span>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-bold text-white">รูปภาพของเมนูนี้</span>
+                            {isCompressing ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                กำลังประมวลผล
+                              </span>
+                            ) : urlImageError ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                                ลิงก์ไม่ถูกต้อง
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                                <CheckCircle2 className="w-2.5 h-2.5" />
+                                พร้อมใช้งาน
+                              </span>
+                            )}
+
+                            {compressionStats && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FF5C00]/20 text-[#FF5C00] border border-[#FF5C00]/30 flex items-center gap-1 font-mono">
+                                <Zap className="w-2.5 h-2.5" />
+                                {formatBytes(compressionStats.originalSize)} ➔ {formatBytes(compressionStats.compressedSize)}
+                              </span>
+                            )}
                           </div>
-                          <p className="text-[11px] text-stone-400 truncate mt-0.5 font-mono">
-                            {formData.image.startsWith('data:') ? 'ไฟล์ภาพที่อัปโหลดจากเครื่อง (Base64)' : formData.image}
-                          </p>
-                          <div className="flex items-center gap-2 mt-2">
+
+                          {urlImageError ? (
+                            <p className="text-[11px] text-rose-300/90 mt-1 leading-relaxed">
+                              ⚠️ ไม่สามารถแสดงรูปจาก URL นี้ได้ (อาจติดสิทธิ์ Hotlink หรือไม่มีไฟล์รูป) แนะนำให้กดเลือกไฟล์ภาพหรือบันทึกภาพลงเครื่องเพื่ออัปโหลด
+                            </p>
+                          ) : (
+                            <p className="text-[11px] text-stone-400 truncate mt-1 font-mono">
+                              {formData.image.startsWith('data:')
+                                ? '✓ รูปภาพไฟล์ปรับขนาดอัตโนมัติ (โหลดไว ไม่กินโควตา)'
+                                : formData.image}
+                            </p>
+                          )}
+
+                          <div className="flex flex-wrap items-center gap-2.5 mt-2.5">
                             <button
                               type="button"
                               onClick={() => fileInputRef.current?.click()}
-                              className="text-[11px] font-bold text-[#FF5C00] hover:text-[#FF7729] flex items-center gap-1 cursor-pointer"
+                              className="text-[11px] font-bold text-[#FF5C00] hover:text-[#FF7729] flex items-center gap-1 cursor-pointer bg-[#FF5C00]/10 hover:bg-[#FF5C00]/20 px-2.5 py-1 rounded-lg transition-colors border border-[#FF5C00]/20"
                             >
                               <Upload className="w-3 h-3" />
                               <span>เลือกไฟล์ใหม่</span>
                             </button>
-                            <span className="text-stone-600">•</span>
+
                             <button
                               type="button"
-                              onClick={() => setFormData({ ...formData, image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80' })}
-                              className="text-[11px] font-medium text-stone-400 hover:text-white flex items-center gap-1 cursor-pointer"
+                              onClick={() => cameraInputRef.current?.click()}
+                              className="text-[11px] font-bold text-stone-300 hover:text-white flex items-center gap-1 cursor-pointer bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-lg transition-colors border border-white/10"
+                            >
+                              <Camera className="w-3 h-3 text-[#FF5C00]" />
+                              <span>ถ่ายรูป</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setUrlImageError(false);
+                                setCompressionStats(null);
+                                setFormData({
+                                  ...formData,
+                                  image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80',
+                                });
+                              }}
+                              className="text-[11px] font-medium text-stone-400 hover:text-white flex items-center gap-1 cursor-pointer px-2 py-1"
                             >
                               <RefreshCw className="w-3 h-3" />
-                              <span>รีเซ็ตค่าเริ่มต้น</span>
+                              <span>รีเซ็ตภาพ</span>
                             </button>
                           </div>
                         </div>
@@ -645,7 +758,10 @@ export const MenuManagerView: React.FC = () => {
                       <div className="flex items-center gap-1.5 p-1 bg-[#0A0A0B] rounded-xl border border-white/10 text-xs">
                         <button
                           type="button"
-                          onClick={() => setImageTab('upload')}
+                          onClick={() => {
+                            setImageTab('upload');
+                            setUrlImageError(false);
+                          }}
                           className={`flex-1 py-1.5 px-2 rounded-lg font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                             imageTab === 'upload'
                               ? 'bg-[#FF5C00] text-white shadow-sm'
@@ -657,7 +773,10 @@ export const MenuManagerView: React.FC = () => {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setImageTab('preset')}
+                          onClick={() => {
+                            setImageTab('preset');
+                            setUrlImageError(false);
+                          }}
                           className={`flex-1 py-1.5 px-2 rounded-lg font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                             imageTab === 'preset'
                               ? 'bg-[#FF5C00] text-white shadow-sm'
@@ -669,7 +788,10 @@ export const MenuManagerView: React.FC = () => {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setImageTab('url')}
+                          onClick={() => {
+                            setImageTab('url');
+                            setUrlImageError(false);
+                          }}
                           className={`flex-1 py-1.5 px-2 rounded-lg font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                             imageTab === 'url'
                               ? 'bg-[#FF5C00] text-white shadow-sm'
@@ -683,7 +805,7 @@ export const MenuManagerView: React.FC = () => {
 
                       {/* Tab 1: File Upload & Drag-Drop */}
                       {imageTab === 'upload' && (
-                        <div>
+                        <div className="space-y-2">
                           <input
                             ref={fileInputRef}
                             type="file"
@@ -695,6 +817,19 @@ export const MenuManagerView: React.FC = () => {
                               }
                             }}
                           />
+                          <input
+                            ref={cameraInputRef}
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleImageFile(e.target.files[0]);
+                              }
+                            }}
+                          />
+
                           <div
                             onDragOver={handleDragOver}
                             onDragLeave={handleDragLeave}
@@ -710,11 +845,18 @@ export const MenuManagerView: React.FC = () => {
                               <Upload className="w-6 h-6" />
                             </div>
                             <p className="text-xs font-bold text-white mb-1">
-                              คลิกเพื่อเลือกไฟล์ภาพ หรือ ลากรูปมาวางที่นี่
+                              คลิกเพื่อเลือกไฟล์รูปภาพ หรือลากรูปมาวางที่นี่
                             </p>
-                            <p className="text-[11px] text-stone-400">
-                              รองรับไฟล์ PNG, JPG, JPEG, WEBP หรือ GIF (สูงสุด 10MB)
+                            <p className="text-[11px] text-stone-400 mb-2">
+                              รองรับไฟล์ PNG, JPG, JPEG, WEBP, GIF (ระบบจะปรับขนาดและบีบอัดอัตโนมัติ)
                             </p>
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] text-stone-300 font-medium">
+                              <span>💡 คุณสามารถกด</span>
+                              <kbd className="px-1.5 py-0.5 rounded bg-black/50 border border-white/20 text-white font-mono text-[9px]">Ctrl+V</kbd>
+                              <span>/</span>
+                              <kbd className="px-1.5 py-0.5 rounded bg-black/50 border border-white/20 text-white font-mono text-[9px]">Cmd+V</kbd>
+                              <span>เพื่อวางรูปภาพได้ทันที</span>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -723,7 +865,7 @@ export const MenuManagerView: React.FC = () => {
                       {imageTab === 'preset' && (
                         <div className="space-y-2">
                           <div className="text-[11px] text-stone-400 font-medium">
-                            คลิกเลือกภาพอาหารสำเร็จรูปที่ต้องการ:
+                            คลิกเลือกภาพอาหารสำเร็จรูปความละเอียดสูงที่ต้องการ:
                           </div>
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-48 overflow-y-auto p-1 custom-scrollbar">
                             {PRESET_FOOD_IMAGES.map((preset, idx) => {
@@ -733,6 +875,8 @@ export const MenuManagerView: React.FC = () => {
                                   key={idx}
                                   type="button"
                                   onClick={() => {
+                                    setUrlImageError(false);
+                                    setCompressionStats(null);
                                     setFormData({ ...formData, image: preset.url });
                                     showToast(`เลือกรูป "${preset.name}" เรียบร้อย`, 'success');
                                   }}
@@ -772,13 +916,17 @@ export const MenuManagerView: React.FC = () => {
                         <div className="space-y-2">
                           <input
                             type="url"
-                            value={formData.image}
-                            onChange={(e) => setFormData({ ...formData, image: e.target.value })}
+                            value={formData.image.startsWith('data:') ? '' : formData.image}
+                            onChange={(e) => {
+                              setUrlImageError(false);
+                              setCompressionStats(null);
+                              setFormData({ ...formData, image: e.target.value });
+                            }}
                             placeholder="https://images.unsplash.com/..."
                             className="w-full px-3.5 py-2.5 rounded-xl bg-[#0A0A0B] border border-white/10 text-xs text-white font-mono focus:outline-none focus:border-[#FF5C00]"
                           />
                           <p className="text-[10px] text-stone-400 font-medium">
-                            วางลิงก์รูปภาพโดยตรงจากอินเทอร์เน็ต เช่น Unsplash หรือ Cloud CDN
+                            วางลิงก์รูปภาพโดยตรง (ต้องเป็นลิงก์ที่ลงท้ายด้วย .jpg, .png, .webp หรือจากคลัง CDN ที่เปิดสาธารณะ)
                           </p>
                         </div>
                       )}
