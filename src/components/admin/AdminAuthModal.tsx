@@ -166,22 +166,21 @@ export const AdminAuthModal: React.FC = () => {
               />
             </div>
 
-            {/* Error Message */}
+            {/* Error Message & Show/Hide Toggle */}
             {errorMsg ? (
               <div className="flex items-center justify-center gap-1.5 text-xs text-rose-400 font-bold text-center">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{errorMsg}</span>
               </div>
             ) : (
-              <div className="flex items-center justify-between px-2 text-[11px] text-stone-500">
-                <span>รหัสเริ่มต้นของร้าน: <strong className="text-stone-400 font-mono font-bold">{correctPin}</strong></span>
+              <div className="flex items-center justify-end px-2 text-[11px] text-stone-500">
                 <button
                   type="button"
                   onClick={() => setShowPin(!showPin)}
-                  className="text-stone-400 hover:text-stone-300 flex items-center gap-1 cursor-pointer"
+                  className="text-stone-400 hover:text-stone-300 flex items-center gap-1 cursor-pointer ml-auto"
                 >
                   {showPin ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                  <span>{showPin ? 'ซ่อน' : 'แสดง'}</span>
+                  <span>{showPin ? 'ซ่อนรหัส' : 'แสดงรหัส'}</span>
                 </button>
               </div>
             )}
