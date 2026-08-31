@@ -30,6 +30,7 @@ import { realtimeManager } from '../services/realtimeSync';
 import { audioChime } from '../utils/audioChime';
 import {
   sendLineFlexMessage,
+  sendOrderLineNotification,
   buildOrderFlexMessage,
   buildTestFlexMessage,
   LineSendResult,
@@ -1210,10 +1211,9 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       realtimeManager.broadcast('ORDER_UPDATED', { order: updatedOrder });
       audioChime.playNewOrderBell();
 
-      // LINE Messaging API Notification (Round 2+ Added items)
+      // LINE Messaging API Notification (Round 2+ Added items with Slip Attachment)
       if (settings.lineNotifyEnabled !== false) {
-        const lineFlex = buildOrderFlexMessage(updatedOrder, settings, true);
-        sendLineFlexMessage(lineFlex, settings.lineChannelAccessToken, settings.lineTargetId).catch((err) => {
+        sendOrderLineNotification(updatedOrder, settings, true).catch((err) => {
           console.warn('LINE notification round add failed:', err);
         });
       }
@@ -1292,10 +1292,9 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     realtimeManager.persistOrder(newOrder);
     realtimeManager.broadcast('ORDER_CREATED', { order: newOrder });
 
-    // LINE Messaging API Notification (New Order)
+    // LINE Messaging API Notification (New Order with Slip Attachment)
     if (settings.lineNotifyEnabled !== false) {
-      const lineFlex = buildOrderFlexMessage(newOrder, settings, false);
-      sendLineFlexMessage(lineFlex, settings.lineChannelAccessToken, settings.lineTargetId).catch((err) => {
+      sendOrderLineNotification(newOrder, settings, false).catch((err) => {
         console.warn('LINE notification new order failed:', err);
       });
     }
@@ -1532,15 +1531,24 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     showToast('บันทึกการตั้งค่าร้านสำเร็จ', 'success');
   };
 
-  // Send Test LINE Notification
+  // Send Test LINE Notification (Includes Sample Slip Image)
   const sendLineTestNotification = async (
     customToken?: string,
     customTargetId?: string
   ): Promise<LineSendResult> => {
     const tokenToUse = customToken?.trim() || settings.lineChannelAccessToken;
     const targetIdToUse = customTargetId !== undefined ? customTargetId : settings.lineTargetId;
-    const testFlex = buildTestFlexMessage(settings);
-    return await sendLineFlexMessage(testFlex, tokenToUse, targetIdToUse);
+    const sampleSlipUrl = 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=800&auto=format&fit=crop&q=80';
+    const testFlex = buildTestFlexMessage(settings, sampleSlipUrl);
+    const messages = [
+      testFlex,
+      {
+        type: 'image',
+        originalContentUrl: sampleSlipUrl,
+        previewImageUrl: sampleSlipUrl,
+      },
+    ];
+    return await sendLineFlexMessage(messages, tokenToUse, targetIdToUse);
   };
 
   return (

@@ -1157,6 +1157,31 @@ export const SettingsView: React.FC = () => {
                         <span className="text-[#FF5C00] font-black text-sm">฿1,455.30</span>
                       </div>
                     </div>
+
+                    {/* Attached Payment Slip Preview */}
+                    <div className="border-t border-white/10 pt-2.5">
+                      <div className="p-2.5 rounded-xl bg-[#161618] border border-emerald-500/20 space-y-2">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="font-bold text-emerald-400 flex items-center gap-1">
+                            🧾 สลิปโอนเงิน (PAYMENT SLIP)
+                          </span>
+                          <span className="text-[9px] font-bold text-emerald-300 bg-emerald-950/60 px-1.5 py-0.5 rounded">
+                            แนบแล้ว ✓
+                          </span>
+                        </div>
+                        <div className="relative rounded-lg overflow-hidden border border-white/10 h-24 bg-stone-900">
+                          <img
+                            src="https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=800&auto=format&fit=crop&q=80"
+                            alt="Slip Preview"
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="w-full py-1 rounded-lg bg-stone-800 text-center text-[10px] text-stone-300 font-bold">
+                          🔍 แตะเพื่อดูรูปสลิปเต็มใบ (Full HD)
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Card Footer */}

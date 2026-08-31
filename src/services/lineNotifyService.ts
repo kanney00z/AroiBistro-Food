@@ -15,12 +15,115 @@ function formatTHB(val: number): string {
 }
 
 /**
+ * Converts or uploads a base64 slip image to a publicly accessible HTTPS URL
+ * so that LINE Messaging API can fetch and display it in LINE chats.
+ */
+export async function uploadSlipImageToPublicUrl(slipImage: string): Promise<string | null> {
+  if (!slipImage || typeof slipImage !== 'string') return null;
+
+  // 1. If it is already a public HTTPS URL, return directly
+  if (slipImage.startsWith('https://') || slipImage.startsWith('http://')) {
+    return slipImage;
+  }
+
+  if (!slipImage.includes('base64')) {
+    return null;
+  }
+
+  const rawBase64 = slipImage.includes('base64,') ? slipImage.split('base64,')[1] : slipImage;
+
+  // 2. Try FreeImage.host API (fast, permanent HTTPS image hosting)
+  try {
+    const formData = new FormData();
+    formData.append('key', '6d207e02198a84728dd10f23001404c0');
+    formData.append('action', 'upload');
+    formData.append('source', rawBase64);
+    formData.append('format', 'json');
+
+    const res = await fetch('https://freeimage.host/api/1/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.image?.url) {
+        return data.image.url;
+      }
+    }
+  } catch (err) {
+    console.warn('FreeImage host upload error, trying tmpfiles fallback:', err);
+  }
+
+  // 3. Try tmpfiles.org API fallback
+  try {
+    const byteCharacters = atob(rawBase64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'image/jpeg' });
+
+    const form = new FormData();
+    form.append('file', blob, `slip_${Date.now()}.jpg`);
+
+    const res = await fetch('https://tmpfiles.org/api/v1/upload', {
+      method: 'POST',
+      body: form,
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.data?.url) {
+        // Convert tmpfiles view url (https://tmpfiles.org/12345/slip.jpg) to direct link (https://tmpfiles.org/dl/12345/slip.jpg)
+        return data.data.url.replace('tmpfiles.org/', 'tmpfiles.org/dl/');
+      }
+    }
+  } catch (err) {
+    console.warn('tmpfiles host upload error, trying catbox fallback:', err);
+  }
+
+  // 4. Try catbox.moe fallback
+  try {
+    const byteCharacters = atob(rawBase64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'image/jpeg' });
+
+    const form = new FormData();
+    form.append('reqtype', 'fileupload');
+    form.append('fileToUpload', blob, `slip_${Date.now()}.jpg`);
+
+    const res = await fetch('https://catbox.moe/user/api.php', {
+      method: 'POST',
+      body: form,
+    });
+
+    if (res.ok) {
+      const text = await res.text();
+      if (text.startsWith('http')) {
+        return text.trim();
+      }
+    }
+  } catch (err) {
+    console.warn('Catbox upload fallback error:', err);
+  }
+
+  return null;
+}
+
+/**
  * Builds a luxury restaurant LINE Flex Message for Orders
  */
 export function buildOrderFlexMessage(
   order: Order,
   settings: RestaurantSettings,
-  isRoundAdd?: boolean
+  isRoundAdd?: boolean,
+  slipPublicUrl?: string
 ): any {
   const isDineIn = order.orderType === 'dine_in';
   const tableText = isDineIn ? (order.tableNumber ? `โต๊ะ ${order.tableNumber}` : 'ทานที่ร้าน (โต๊ะไม่ระบุ)') : 'สั่งกลับบ้าน (Takeaway)';
@@ -141,8 +244,8 @@ export function buildOrderFlexMessage(
       });
     }
 
-    // Special Instructions
-    if (item.specialInstructions) {
+    // Special instructions
+    if (item.specialInstructions && item.specialInstructions.trim()) {
       itemRows.push({
         type: 'box',
         layout: 'horizontal',
@@ -174,6 +277,7 @@ export function buildOrderFlexMessage(
       : 'เงินสด (Cash)';
 
   const isPaid = order.paymentStatus === 'paid';
+  const hasSlip = Boolean(order.slipImage || slipPublicUrl);
 
   const flexBubble = {
     type: 'bubble',
@@ -304,6 +408,18 @@ export function buildOrderFlexMessage(
                   color: '#78716C',
                   margin: 'xs',
                 },
+                ...(hasSlip
+                  ? [
+                      {
+                        type: 'text',
+                        text: '🧾 แนบสลิปแล้ว ✓',
+                        size: 'xxs',
+                        color: '#34D399',
+                        weight: 'bold',
+                        margin: 'xs',
+                      },
+                    ]
+                  : []),
               ],
             },
           ],
@@ -463,6 +579,85 @@ export function buildOrderFlexMessage(
             },
           ],
         },
+
+        // Dedicated Slip Preview Section in Flex Message
+        ...(hasSlip
+          ? [
+              {
+                type: 'separator',
+                color: '#262626',
+                margin: 'lg' as const,
+              },
+              {
+                type: 'box',
+                layout: 'vertical' as const,
+                backgroundColor: '#161618',
+                cornerRadius: '12px',
+                paddingAll: '12px',
+                margin: 'md' as const,
+                contents: [
+                  {
+                    type: 'box',
+                    layout: 'horizontal' as const,
+                    contents: [
+                      {
+                        type: 'text',
+                        text: '🧾 รูปภาพสลิปโอนเงิน (PAYMENT SLIP)',
+                        size: 'xs',
+                        color: '#10B981',
+                        weight: 'bold',
+                        flex: 1,
+                      },
+                      {
+                        type: 'text',
+                        text: 'แนบแล้ว ✓',
+                        size: 'xxs',
+                        color: '#A7F3D0',
+                        weight: 'bold',
+                      },
+                    ],
+                  },
+                  ...(slipPublicUrl
+                    ? [
+                        {
+                          type: 'image',
+                          url: slipPublicUrl,
+                          size: 'full',
+                          aspectRatio: '4:3',
+                          aspectMode: 'cover',
+                          margin: 'md',
+                          action: {
+                            type: 'uri',
+                            uri: slipPublicUrl,
+                          },
+                        },
+                        {
+                          type: 'button',
+                          style: 'secondary',
+                          color: '#262626',
+                          height: 'sm',
+                          margin: 'sm',
+                          action: {
+                            type: 'uri',
+                            label: '🔍 แตะเพื่อดูสลิปเต็มใบ (Full HD)',
+                            uri: slipPublicUrl,
+                          },
+                        },
+                      ]
+                    : [
+                        {
+                          type: 'text',
+                          text: '📌 ลูกค้าได้แนบรูปสลิปโอนเงินเข้าสู่ระบบแล้ว (ตรวจสอบภาพเต็มได้ที่หน้าจอ KDS/POS)',
+                          size: 'xxs',
+                          color: '#A8A29E',
+                          margin: 'sm',
+                          wrap: true,
+                        },
+                      ]),
+                ],
+              },
+            ]
+          : []),
       ],
     },
     footer: {
@@ -484,7 +679,7 @@ export function buildOrderFlexMessage(
 
   return {
     type: 'flex',
-    altText: `${roundText} #${order.orderNumber} ${tableText} (${formatTHB(order.total)})`,
+    altText: `${roundText} #${order.orderNumber} ${tableText} (${formatTHB(order.total)})${hasSlip ? ' 🧾 มีสลิปแนบ' : ''}`,
     contents: flexBubble,
   };
 }
@@ -492,14 +687,16 @@ export function buildOrderFlexMessage(
 /**
  * Builds a Test Flex Message for LINE
  */
-export function buildTestFlexMessage(settings: RestaurantSettings): any {
+export function buildTestFlexMessage(settings: RestaurantSettings, sampleSlipUrl?: string): any {
   const now = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+  const slipUrl = sampleSlipUrl || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=800&auto=format&fit=crop&q=80';
+
   return {
     type: 'flex',
-    altText: `🔔 ทดสอบการแจ้งเตือน LINE จาก ${settings.name || 'AroiBistro'}`,
+    altText: `🔔 ทดสอบการแจ้งเตือน LINE พร้อมสลิป จาก ${settings.name || 'AroiBistro'}`,
     contents: {
       type: 'bubble',
-      size: 'mega',
+      size: 'giga',
       header: {
         type: 'box',
         layout: 'vertical',
@@ -508,17 +705,24 @@ export function buildTestFlexMessage(settings: RestaurantSettings): any {
         contents: [
           {
             type: 'text',
-            text: 'LINE NOTIFICATION CONNECTED',
+            text: (settings.name || 'AROI BISTRO').toUpperCase(),
             size: 'xxs',
             color: '#10B981',
             weight: 'bold',
           },
           {
             type: 'text',
-            text: '✨ ระบบแจ้งเตือนพร้อมใช้งาน',
+            text: '🔔 ทดสอบการแจ้งเตือนสำเร็จ!',
             size: 'lg',
             color: '#FFFFFF',
             weight: 'bold',
+            margin: 'sm',
+          },
+          {
+            type: 'text',
+            text: `ส่งเมื่อเวลา ${now} น. • ระบบ LINE Messaging API & Flex Message พร้อมรูปสลิป`,
+            size: 'xs',
+            color: '#78716C',
             margin: 'xs',
           },
         ],
@@ -528,43 +732,96 @@ export function buildTestFlexMessage(settings: RestaurantSettings): any {
         layout: 'vertical',
         backgroundColor: '#0D0D0E',
         paddingAll: '16px',
-        spacing: 'md',
         contents: [
           {
             type: 'text',
-            text: `การเชื่อมต่อ LINE Messaging API กับร้าน "${settings.name}" สำเร็จสมบูรณ์แล้ว!`,
-            size: 'xs',
-            color: '#E7E5E4',
+            text: 'ระบบแจ้งเตือนออเดอร์พร้อมสลิปเข้า LINE ของร้านคุณทำงานได้สมบูรณ์แบบแล้ว 🎉',
+            size: 'sm',
+            color: '#D6D3D1',
             wrap: true,
+          },
+          {
+            type: 'separator',
+            color: '#262626',
+            margin: 'md',
           },
           {
             type: 'box',
             layout: 'vertical',
-            backgroundColor: '#161618',
-            cornerRadius: '10px',
-            paddingAll: '12px',
+            margin: 'md',
             spacing: 'xs',
             contents: [
               {
                 type: 'text',
-                text: `🏪 ร้านค้า: ${settings.name}`,
-                size: 'xs',
-                color: '#FF5C00',
-                weight: 'bold',
-              },
-              {
-                type: 'text',
-                text: `🕒 เวลาทดสอบ: ${now} น.`,
+                text: `📍 สาขา: ${settings.address || 'สาขาหลัก'}`,
                 size: 'xs',
                 color: '#A8A29E',
               },
               {
                 type: 'text',
-                text: '🚀 เมื่อมีลูกค้าสั่งอาหารหรือสั่งเพิ่ม ระบบจะส่งการ์ดสรุปรายการอาหารเข้า LINE นี้โดยอัตโนมัติ',
-                size: 'xxs',
-                color: '#78716C',
-                wrap: true,
-                margin: 'xs',
+                text: `📞 ติดต่อ: ${settings.phone || '081-234-5678'}`,
+                size: 'xs',
+                color: '#A8A29E',
+              },
+            ],
+          },
+          {
+            type: 'separator',
+            color: '#262626',
+            margin: 'md',
+          },
+          {
+            type: 'box',
+            layout: 'vertical',
+            backgroundColor: '#161618',
+            cornerRadius: '12px',
+            paddingAll: '12px',
+            margin: 'md',
+            contents: [
+              {
+                type: 'box',
+                layout: 'horizontal',
+                contents: [
+                  {
+                    type: 'text',
+                    text: '🧾 ตัวอย่างสลิปโอนเงิน (PAYMENT SLIP)',
+                    size: 'xs',
+                    color: '#10B981',
+                    weight: 'bold',
+                    flex: 1,
+                  },
+                  {
+                    type: 'text',
+                    text: 'แนบแล้ว ✓',
+                    size: 'xxs',
+                    color: '#A7F3D0',
+                    weight: 'bold',
+                  },
+                ],
+              },
+              {
+                type: 'image',
+                url: slipUrl,
+                size: 'full',
+                aspectRatio: '4:3',
+                aspectMode: 'cover',
+                margin: 'md',
+                action: {
+                  type: 'uri',
+                  uri: slipUrl,
+                },
+              },
+              {
+                type: 'button',
+                style: 'secondary',
+                color: '#262626',
+                height: 'sm',
+                margin: 'sm',
+                action: {
+                  type: 'uri',
+                  label: '🔍 แตะเพื่อดูสลิปตัวอย่าง (Full HD)',
+                  uri: slipUrl,
+                },
               },
             ],
           },
@@ -578,7 +835,7 @@ export function buildTestFlexMessage(settings: RestaurantSettings): any {
         contents: [
           {
             type: 'text',
-            text: 'AroiBistro Food Ordering System',
+            text: 'AroiBistro Smart POS & KDS System 2026',
             size: 'xxs',
             color: '#78716C',
             align: 'center',
@@ -590,10 +847,11 @@ export function buildTestFlexMessage(settings: RestaurantSettings): any {
 }
 
 /**
- * Sends a message via server endpoint `/api/line/notify`, `/api/line-notify`, or CORS proxy fallback
+ * Sends messages via server endpoint `/api/line/notify`, `/api/line-notify`, or CORS proxy fallback.
+ * Supports sending single Flex Message or multiple messages (Flex + Image Message).
  */
-export async function sendLineFlexMessage(
-  flexMessage: any,
+export async function sendLineMessages(
+  messagesPayload: any | any[],
   channelAccessToken?: string,
   targetId?: string
 ): Promise<LineSendResult> {
@@ -608,14 +866,16 @@ export async function sendLineFlexMessage(
     };
   }
 
+  const messages = Array.isArray(messagesPayload) ? messagesPayload : [messagesPayload];
+
   const isPush = Boolean(targetId && targetId.trim());
   const lineEndpoint = isPush
     ? 'https://api.line.me/v2/bot/message/push'
     : 'https://api.line.me/v2/bot/message/broadcast';
 
   const linePayload = isPush
-    ? { to: targetId!.trim(), messages: [flexMessage] }
-    : { messages: [flexMessage] };
+    ? { to: targetId!.trim(), messages }
+    : { messages };
 
   // 1. Try sending via primary backend endpoint `/api/line/notify`
   try {
@@ -627,7 +887,7 @@ export async function sendLineFlexMessage(
       body: JSON.stringify({
         token,
         targetId: targetId?.trim() || undefined,
-        messages: [flexMessage],
+        messages,
       }),
     });
 
@@ -664,7 +924,7 @@ export async function sendLineFlexMessage(
       body: JSON.stringify({
         token,
         targetId: targetId?.trim() || undefined,
-        messages: [flexMessage],
+        messages,
       }),
     });
 
@@ -718,4 +978,53 @@ export async function sendLineFlexMessage(
     success: false,
     message: 'ไม่สามารถส่งข้อความเข้า LINE ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตหรือ Channel Access Token',
   };
+}
+
+/**
+ * Backward compatibility alias for sendLineMessages
+ */
+export const sendLineFlexMessage = sendLineMessages;
+
+/**
+ * High-level helper to send an order notification with attached slip image to LINE
+ */
+export async function sendOrderLineNotification(
+  order: Order,
+  settings: RestaurantSettings,
+  isRoundAdd?: boolean
+): Promise<LineSendResult> {
+  if (settings.lineNotifyEnabled === false) {
+    return {
+      success: false,
+      message: 'LINE Notify ปิดใช้งานอยู่ในการตั้งค่า',
+    };
+  }
+
+  let slipPublicUrl: string | undefined = undefined;
+
+  // If order has slip image, upload/convert to public HTTPS URL
+  if (order.slipImage && typeof order.slipImage === 'string' && order.slipImage.trim().length > 0) {
+    try {
+      const uploadedUrl = await uploadSlipImageToPublicUrl(order.slipImage);
+      if (uploadedUrl) {
+        slipPublicUrl = uploadedUrl;
+      }
+    } catch (err) {
+      console.warn('Failed to upload slip image for LINE notification:', err);
+    }
+  }
+
+  const flexMessage = buildOrderFlexMessage(order, settings, isRoundAdd, slipPublicUrl);
+  const messages: any[] = [flexMessage];
+
+  // If slip public URL is available, also append a full high-resolution LINE Image Message
+  if (slipPublicUrl && (slipPublicUrl.startsWith('https://') || slipPublicUrl.startsWith('http://'))) {
+    messages.push({
+      type: 'image',
+      originalContentUrl: slipPublicUrl,
+      previewImageUrl: slipPublicUrl,
+    });
+  }
+
+  return await sendLineMessages(messages, settings.lineChannelAccessToken, settings.lineTargetId);
 }
