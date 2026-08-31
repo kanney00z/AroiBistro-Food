@@ -27,6 +27,13 @@ import {
   RefreshCw,
   UploadCloud,
   DownloadCloud,
+  MessageSquare,
+  Send,
+  Bell,
+  Key,
+  Eye,
+  EyeOff,
+  Smartphone,
 } from 'lucide-react';
 import { useRestaurant } from '../../context/RestaurantContext';
 import { SpecialHoliday } from '../../types';
@@ -56,6 +63,7 @@ export const SettingsView: React.FC = () => {
     setIsDatabaseModalOpen,
     pushAllToCloud,
     pullAllFromCloud,
+    sendLineTestNotification,
     showToast,
   } = useRestaurant();
 
@@ -67,6 +75,25 @@ export const SettingsView: React.FC = () => {
   const [selectedTableForQr, setSelectedTableForQr] = useState<string>(tables[0]?.number || 'T-01');
   const [isPushing, setIsPushing] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
+  const [isTestingLine, setIsTestingLine] = useState(false);
+  const [lineTestResult, setLineTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [showLineToken, setShowLineToken] = useState(false);
+
+  const handleTestLine = async () => {
+    setIsTestingLine(true);
+    setLineTestResult(null);
+    const res = await sendLineTestNotification(formData.lineChannelAccessToken, formData.lineTargetId);
+    setIsTestingLine(false);
+    setLineTestResult({
+      success: res.success,
+      message: res.message,
+    });
+    if (res.success) {
+      showToast('ส่งการแจ้งเตือนเข้า LINE สำเร็จ! 🔔', 'success');
+    } else {
+      showToast(`ส่งไม่สำเร็จ: ${res.message}`, 'warning');
+    }
+  };
 
   const handlePushAll = async () => {
     setIsPushing(true);
@@ -889,6 +916,257 @@ export const SettingsView: React.FC = () => {
                   </span>
                 </div>
               </label>
+            </div>
+          </div>
+        </div>
+
+        {/* SECTION 5: LINE Official Notification & Flex Message Hub */}
+        <div className="mt-8 pt-8 border-t border-white/10 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-[#06C755]/20 border border-[#06C755]/40 flex items-center justify-center text-[#06C755]">
+                <MessageSquare className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-display font-black text-lg text-white uppercase tracking-wider">
+                    5. ระบบแจ้งเตือนออเดอร์เข้า LINE (LINE Messaging API)
+                  </h4>
+                  <span className="px-2 py-0.5 rounded-full bg-[#06C755]/20 border border-[#06C755]/40 text-[#06C755] text-[10px] font-black tracking-wider uppercase">
+                    Flex Message สวยงาม
+                  </span>
+                </div>
+                <p className="text-xs text-stone-400 font-medium">
+                  แจ้งเตือนเข้าห้องแชท LINE ทันทีเมื่อมีออเดอร์ใหม่ หรือลูกค้าสั่งอาหารเพิ่มเข้าบิลเดิม
+                </p>
+              </div>
+            </div>
+
+            {/* Toggle Enable Switch */}
+            <label className="inline-flex items-center gap-3 px-4 py-2 rounded-2xl bg-[#0A0A0B] border border-white/10 cursor-pointer hover:border-[#06C755]/50 transition-colors">
+              <input
+                type="checkbox"
+                checked={formData.lineNotifyEnabled ?? true}
+                onChange={(e) => setFormData({ ...formData, lineNotifyEnabled: e.target.checked })}
+                className="w-5 h-5 rounded text-[#06C755] bg-[#161618] border-white/20 focus:ring-[#06C755]"
+              />
+              <span className="text-xs font-bold text-white">
+                {formData.lineNotifyEnabled ? 'เปิดใช้งาน LINE Notify' : 'ปิดใช้งานชั่วคราว'}
+              </span>
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Form Settings */}
+            <div className="lg:col-span-7 space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="label-caps flex items-center gap-1.5 text-stone-300">
+                    <Key className="w-3.5 h-3.5 text-[#06C755]" />
+                    <span>Channel Access Token (Long-Lived)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowLineToken(!showLineToken)}
+                    className="text-[11px] text-stone-400 hover:text-white flex items-center gap-1 cursor-pointer"
+                  >
+                    {showLineToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    <span>{showLineToken ? 'ซ่อน Token' : 'แสดง Token'}</span>
+                  </button>
+                </div>
+                <div className="relative">
+                  <textarea
+                    rows={3}
+                    value={formData.lineChannelAccessToken || ''}
+                    onChange={(e) => setFormData({ ...formData, lineChannelAccessToken: e.target.value })}
+                    placeholder="ใส่ LINE Messaging API Channel Access Token..."
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#0A0A0B] border border-white/10 text-xs font-mono text-white focus:outline-none focus:border-[#06C755] resize-none"
+                    style={{ WebkitTextSecurity: showLineToken ? 'none' : 'disc' } as any}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-stone-500 mt-1">
+                  <span>✅ มีการตั้งค่า Token เริ่มต้นพร้อมใช้งานแล้ว</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData({
+                        ...formData,
+                        lineChannelAccessToken:
+                          'XSOp1dJdNKEw9HGD7fRlN4VJX5fWYmS/EYXqWMMq5pHMtWXOizNLp5FEaNyDbmoalfFkqPBxbn/y9cEWse3hl5OEyUUkKZf9Ej/y2DO5+WLhuLDuIvlkx4LT+imCU+Ptl9kklN7nG1FRzPDemE73tgdB04t89/1O/w1cDnyilFU=',
+                      })
+                    }
+                    className="text-[#06C755] hover:underline cursor-pointer"
+                  >
+                    รีเซ็ตเป็น Token ที่ระบุ
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="label-caps block mb-1.5 text-stone-300">
+                  Target User ID / Group ID (ไม่บังคับ)
+                </label>
+                <input
+                  type="text"
+                  value={formData.lineTargetId || ''}
+                  onChange={(e) => setFormData({ ...formData, lineTargetId: e.target.value })}
+                  placeholder="เว้นว่างไว้เพื่อ Broadcast ทุกคน หรือใส่ เช่น U1234abcd..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#0A0A0B] border border-white/10 text-xs font-mono text-white focus:outline-none focus:border-[#06C755]"
+                />
+                <p className="text-[11px] text-stone-500 mt-1">
+                  💡 หากเว้นว่างไว้ ระบบจะ Broadcast แจ้งเตือนไปยังทุกคนที่เพิ่มเพื่อนบอทไว้
+                </p>
+              </div>
+
+              {/* Action & Test Send */}
+              <div className="p-4 rounded-2xl bg-[#0A0A0B] border border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Bell className="w-4 h-4 text-[#06C755]" />
+                    <span className="text-xs font-bold text-white">ทดสอบการส่งการแจ้งเตือน</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleTestLine}
+                    disabled={isTestingLine || !formData.lineChannelAccessToken}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#06C755] hover:bg-[#05a847] disabled:opacity-50 text-white text-xs font-black uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-[#06C755]/20"
+                  >
+                    {isTestingLine ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>กำลังส่ง...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" />
+                        <span>ทดสอบส่งเข้า LINE ทันที</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {lineTestResult && (
+                  <div
+                    className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
+                      lineTestResult.success
+                        ? 'bg-[#06C755]/10 border-[#06C755]/30 text-[#A7F3D0]'
+                        : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                    }`}
+                  >
+                    {lineTestResult.success ? (
+                      <CheckCircle2 className="w-4 h-4 text-[#06C755] shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    )}
+                    <div className="flex-1 font-medium">{lineTestResult.message}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Live Visual Flex Message Preview */}
+            <div className="lg:col-span-5 flex flex-col">
+              <div className="text-[11px] font-bold text-stone-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Smartphone className="w-3.5 h-3.5 text-[#06C755]" />
+                <span>ตัวอย่างการแสดงผลบน LINE (Flex Message Mockup)</span>
+              </div>
+              
+              <div className="flex-1 rounded-2xl bg-[#000000] border border-white/10 p-3 shadow-2xl flex flex-col justify-center">
+                {/* Flex Card Container */}
+                <div className="rounded-2xl overflow-hidden border border-white/15 bg-[#161618] text-white shadow-xl text-left">
+                  {/* Card Header */}
+                  <div className="p-3.5 bg-[#1A1A1C] border-b border-white/10">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase text-[#FF5C00] tracking-wider">
+                        {formData.name || 'AROI BISTRO'}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md bg-[#065F46] text-[#A7F3D0] text-[9px] font-black">
+                        🔔 ออเดอร์ใหม่
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between mt-1.5">
+                      <span className="text-sm font-black text-white">🍽️ โต๊ะ 04</span>
+                      <span className="text-xs font-black text-[#FF5C00]">#ORD-9824</span>
+                    </div>
+                    <span className="text-[10px] text-stone-400 block mt-0.5">
+                      🕒 วันนี้ • 18:45 น.
+                    </span>
+                  </div>
+
+                  {/* Card Body */}
+                  <div className="p-3.5 bg-[#0D0D0E] space-y-2.5">
+                    {/* Customer Box */}
+                    <div className="p-2 rounded-lg bg-[#161618] border border-white/5 flex items-center justify-between text-[11px]">
+                      <div>
+                        <div className="font-bold text-white">👤 คุณพงศกร</div>
+                        <div className="text-[10px] text-stone-400">📞 081-234-5678</div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] font-bold text-emerald-400">✓ จ่ายแล้ว</span>
+                        <div className="text-[9px] text-stone-500">พร้อมเพย์</div>
+                      </div>
+                    </div>
+
+                    {/* Items Section */}
+                    <div className="space-y-1.5 text-xs">
+                      <div className="text-[10px] font-black text-[#FF5C00] uppercase">
+                        📋 รายการอาหาร (3 ที่)
+                      </div>
+                      
+                      <div className="border-t border-white/10 pt-1.5 space-y-1.5">
+                        <div className="flex justify-between items-start">
+                          <div className="flex gap-1.5">
+                            <span className="font-bold text-[#FF5C00]">1x</span>
+                            <div>
+                              <div className="font-bold text-white text-[11px]">สเต็กเนื้อวากิวออสเตรเลีย A5</div>
+                              <div className="text-[9px] text-stone-400">• ความสุก: Medium Rare</div>
+                            </div>
+                          </div>
+                          <span className="text-[11px] font-bold text-amber-400">฿890</span>
+                        </div>
+
+                        <div className="flex justify-between items-start">
+                          <div className="flex gap-1.5">
+                            <span className="font-bold text-[#FF5C00]">2x</span>
+                            <div>
+                              <div className="font-bold text-white text-[11px]">สปาเก็ตตี้คาโบนาร่าทรัฟเฟิล</div>
+                              <div className="text-[9px] text-red-400">🚫 ไม่ใส่: พริกไทย</div>
+                            </div>
+                          </div>
+                          <span className="text-[11px] font-bold text-amber-400">฿580</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Price Breakdown */}
+                    <div className="border-t border-white/10 pt-2 space-y-1 text-[11px]">
+                      <div className="flex justify-between text-stone-400 text-[10px]">
+                        <span>ยอดรวมอาหาร</span>
+                        <span>฿1,470</span>
+                      </div>
+                      <div className="flex justify-between text-emerald-400 text-[10px]">
+                        <span>ส่วนลดโปรโมชั่น (AROI10)</span>
+                        <span>-฿147</span>
+                      </div>
+                      <div className="flex justify-between text-stone-400 text-[10px]">
+                        <span>Service Charge (10%)</span>
+                        <span>฿132.30</span>
+                      </div>
+                      <div className="flex justify-between text-white font-black text-xs pt-1 border-t border-white/5">
+                        <span>ยอดสุทธิ (Total)</span>
+                        <span className="text-[#FF5C00] font-black text-sm">฿1,455.30</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card Footer */}
+                  <div className="p-2 bg-[#161618] border-t border-white/10 text-center">
+                    <span className="text-[9px] text-stone-500 font-medium">
+                      ⚡ แจ้งเตือนอัตโนมัติจากระบบครัว KDS • {formData.name || 'AROI BISTRO'}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

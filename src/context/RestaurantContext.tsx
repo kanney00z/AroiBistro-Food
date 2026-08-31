@@ -28,6 +28,12 @@ import { getStoreStatus } from '../utils/storeHours';
 import { safeSaveOrdersToStorage, safeLocalStorageSet } from '../utils/storage';
 import { realtimeManager } from '../services/realtimeSync';
 import { audioChime } from '../utils/audioChime';
+import {
+  sendLineFlexMessage,
+  buildOrderFlexMessage,
+  buildTestFlexMessage,
+  LineSendResult,
+} from '../services/lineNotifyService';
 
 interface CustomerInfo {
   name: string;
@@ -92,6 +98,9 @@ interface RestaurantContextType {
   reconnectSupabase: () => Promise<void>;
   pushAllToCloud: () => Promise<{ success: boolean; message: string }>;
   pullAllFromCloud: () => Promise<{ success: boolean; message: string }>;
+
+  // LINE Messaging API Notifications
+  sendLineTestNotification: (customToken?: string, customTargetId?: string) => Promise<LineSendResult>;
 
   // Cart & Ordering State
   cart: CartItem[];
@@ -1201,6 +1210,14 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       realtimeManager.broadcast('ORDER_UPDATED', { order: updatedOrder });
       audioChime.playNewOrderBell();
 
+      // LINE Messaging API Notification (Round 2+ Added items)
+      if (settings.lineNotifyEnabled !== false) {
+        const lineFlex = buildOrderFlexMessage(updatedOrder, settings, true);
+        sendLineFlexMessage(lineFlex, settings.lineChannelAccessToken, settings.lineTargetId).catch((err) => {
+          console.warn('LINE notification round add failed:', err);
+        });
+      }
+
       clearCart();
       setIsCheckoutModalOpen(false);
       setIsCartDrawerOpen(false);
@@ -1274,6 +1291,14 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // Persist & Broadcast Realtime Order
     realtimeManager.persistOrder(newOrder);
     realtimeManager.broadcast('ORDER_CREATED', { order: newOrder });
+
+    // LINE Messaging API Notification (New Order)
+    if (settings.lineNotifyEnabled !== false) {
+      const lineFlex = buildOrderFlexMessage(newOrder, settings, false);
+      sendLineFlexMessage(lineFlex, settings.lineChannelAccessToken, settings.lineTargetId).catch((err) => {
+        console.warn('LINE notification new order failed:', err);
+      });
+    }
 
     setActiveCustomerOrder(newOrder);
     clearCart();
@@ -1507,6 +1532,17 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     showToast('บันทึกการตั้งค่าร้านสำเร็จ', 'success');
   };
 
+  // Send Test LINE Notification
+  const sendLineTestNotification = async (
+    customToken?: string,
+    customTargetId?: string
+  ): Promise<LineSendResult> => {
+    const tokenToUse = customToken?.trim() || settings.lineChannelAccessToken;
+    const targetIdToUse = customTargetId !== undefined ? customTargetId : settings.lineTargetId;
+    const testFlex = buildTestFlexMessage(settings);
+    return await sendLineFlexMessage(testFlex, tokenToUse, targetIdToUse);
+  };
+
   return (
     <RestaurantContext.Provider
       value={{
@@ -1553,6 +1589,7 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         reconnectSupabase,
         pushAllToCloud,
         pullAllFromCloud,
+        sendLineTestNotification,
         cart,
         addToCart,
         addCustomDishToCart,

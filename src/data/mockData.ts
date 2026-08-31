@@ -54,6 +54,9 @@ export const INITIAL_SETTINGS: RestaurantSettings = {
   deliveryBaseFee: 40,
   adminPin: '1234',
   heroBanner: DEFAULT_HERO_BANNER,
+  lineNotifyEnabled: true,
+  lineChannelAccessToken: 'XSOp1dJdNKEw9HGD7fRlN4VJX5fWYmS/EYXqWMMq5pHMtWXOizNLp5FEaNyDbmoalfFkqPBxbn/y9cEWse3hl5OEyUUkKZf9Ej/y2DO5+WLhuLDuIvlkx4LT+imCU+Ptl9kklN7nG1FRzPDemE73tgdB04t89/1O/w1cDnyilFU=',
+  lineTargetId: '',
 };
 
 export const CATEGORIES: Category[] = [

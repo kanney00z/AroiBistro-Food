@@ -194,4 +194,7 @@ export interface RestaurantSettings {
   deliveryBaseFee: number;
   adminPin?: string; // PIN code to access Admin Backoffice (default "1234")
   heroBanner?: HeroBannerSettings;
+  lineNotifyEnabled?: boolean; // Enable/disable LINE notifications
+  lineChannelAccessToken?: string; // LINE Messaging API Channel Access Token
+  lineTargetId?: string; // Target User ID or Group ID (leave empty for Broadcast)
 }
