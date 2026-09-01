@@ -111,8 +111,9 @@ export interface Order {
 export interface Table {
   id: string;
   number: string;
+  name?: string;
   capacity: number;
-  zone: 'Main Hall' | 'Terrace' | 'VIP Room' | 'Bar Area';
+  zone: string;
   status: TableStatus;
   currentOrderId?: string;
   guestCount?: number;

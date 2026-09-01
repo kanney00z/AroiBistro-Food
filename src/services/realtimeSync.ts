@@ -33,6 +33,9 @@ export type RealtimeEventType =
   | 'MENU_ITEM_DELETED'
   | 'MENU_ITEM_STOCK_TOGGLED'
   | 'TABLE_STATUS_CHANGED'
+  | 'TABLE_CREATED'
+  | 'TABLE_UPDATED'
+  | 'TABLE_DELETED'
   | 'TABLE_BILL_CLEARED'
   | 'TABLE_GUEST_COUNT_CHANGED'
   | 'CATEGORY_CREATED'
@@ -62,10 +65,15 @@ export interface RealtimeListenerCallbacks {
   onMenuItemCreated?: (item: MenuItem) => void;
   onMenuItemUpdated?: (item: MenuItem) => void;
   onMenuItemDeleted?: (itemId: string) => void;
+  onTableCreated?: (table: Table) => void;
+  onTableUpdated?: (table: Table) => void;
+  onTableDeleted?: (tableId: string) => void;
   onTableStatusChanged?: (tableId: string, status: Table['status']) => void;
   onTableBillCleared?: (tableIdOrNumber: string) => void;
   onCategoryUpdated?: (categories: Category[]) => void;
+  onCategoryDeleted?: (categoryId: string) => void;
   onPromoUpdated?: (promos: PromoCode[]) => void;
+  onPromoDeleted?: (code: string) => void;
   onSettingsUpdated?: (settings: RestaurantSettings) => void;
   onFullStateSync?: (state: {
     orders?: Order[];
@@ -148,11 +156,11 @@ class RealtimeSyncManager {
 
       // Compute quick state signature to detect if anything changed
       const sigParts = [
-        data.orders ? `${data.orders.length}_${data.orders[0]?.id}_${data.orders[0]?.orderStatus}` : '0',
-        data.menuItems ? `${data.menuItems.length}_${data.menuItems.filter(m => m.available).length}` : '0',
-        data.tables ? data.tables.map(t => `${t.id}:${t.status}`).join(',') : '0',
-        data.categories ? `${data.categories.length}` : '0',
-        data.promos ? `${data.promos.length}_${data.promos.filter(p => p.active).length}` : '0',
+        data.orders ? `${data.orders.length}_${data.orders.map((o) => `${o.id}:${o.orderStatus}`).join(',')}` : '0',
+        data.menuItems ? `${data.menuItems.length}_${data.menuItems.map((m) => `${m.id}:${m.available}`).join(',')}` : '0',
+        data.tables ? data.tables.map((t) => `${t.id}:${t.status}`).join(',') : '0',
+        data.categories ? `${data.categories.length}_${data.categories.map((c) => c.id).join(',')}` : '0',
+        data.promos ? `${data.promos.length}_${data.promos.map((p) => `${p.code}:${p.active}`).join(',')}` : '0',
         data.settings ? JSON.stringify(data.settings) : '0',
       ];
       const newSignature = sigParts.join('|||');
@@ -400,6 +408,24 @@ class RealtimeSyncManager {
         }
         break;
 
+      case 'TABLE_CREATED':
+        if (payload?.table && this.callbacks.onTableCreated) {
+          this.callbacks.onTableCreated(payload.table);
+        }
+        break;
+
+      case 'TABLE_UPDATED':
+        if (payload?.table && this.callbacks.onTableUpdated) {
+          this.callbacks.onTableUpdated(payload.table);
+        }
+        break;
+
+      case 'TABLE_DELETED':
+        if (payload?.tableId && this.callbacks.onTableDeleted) {
+          this.callbacks.onTableDeleted(payload.tableId);
+        }
+        break;
+
       case 'TABLE_STATUS_CHANGED':
         if (payload?.tableId && payload?.status && this.callbacks.onTableStatusChanged) {
           this.callbacks.onTableStatusChanged(payload.tableId, payload.status);
@@ -418,7 +444,25 @@ class RealtimeSyncManager {
         }
         break;
 
+      case 'CATEGORY_DELETED':
+        if (payload?.id && this.callbacks.onCategoryDeleted) {
+          this.callbacks.onCategoryDeleted(payload.id);
+        }
+        if (payload?.categories && this.callbacks.onCategoryUpdated) {
+          this.callbacks.onCategoryUpdated(payload.categories);
+        }
+        break;
+
       case 'PROMO_UPDATED':
+        if (payload?.promos && this.callbacks.onPromoUpdated) {
+          this.callbacks.onPromoUpdated(payload.promos);
+        }
+        break;
+
+      case 'PROMO_DELETED':
+        if (payload?.code && this.callbacks.onPromoDeleted) {
+          this.callbacks.onPromoDeleted(payload.code);
+        }
         if (payload?.promos && this.callbacks.onPromoUpdated) {
           this.callbacks.onPromoUpdated(payload.promos);
         }
@@ -482,8 +526,21 @@ class RealtimeSyncManager {
    */
   private handlePostgresTableChange(payload: any) {
     if (!payload) return;
-    const { new: newRow } = payload;
-    if (newRow) {
+    const { eventType, new: newRow, old: oldRow } = payload;
+
+    if (eventType === 'INSERT' && newRow) {
+      const table = dbRowToTable(newRow);
+      this.callbacks.onTableCreated?.(table);
+    } else if (eventType === 'UPDATE' && newRow) {
+      const table = dbRowToTable(newRow);
+      this.callbacks.onTableUpdated?.(table);
+      this.callbacks.onTableStatusChanged?.(table.id, table.status);
+      if (table.status === 'available') {
+        this.callbacks.onTableBillCleared?.(table.id);
+      }
+    } else if (eventType === 'DELETE' && oldRow?.id) {
+      this.callbacks.onTableDeleted?.(oldRow.id);
+    } else if (newRow) {
       const table = dbRowToTable(newRow);
       this.callbacks.onTableStatusChanged?.(table.id, table.status);
       if (table.status === 'available') {
@@ -601,6 +658,28 @@ class RealtimeSyncManager {
     }
   }
 
+  public async deleteTable(tableId: string): Promise<void> {
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    try {
+      await supabase.from('tables').delete().eq('id', tableId);
+    } catch (err) {
+      console.warn('Failed to delete table from Supabase:', err);
+    }
+  }
+
+  public async clearAllCompletedOrders(): Promise<void> {
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    try {
+      await supabase.from('orders').delete().eq('order_status', 'completed');
+    } catch (err) {
+      console.warn('Failed to clear completed orders from Supabase:', err);
+    }
+  }
+
   public async persistTable(table: Table): Promise<void> {
     const supabase = getSupabase();
     if (!supabase) return;
@@ -620,6 +699,16 @@ class RealtimeSyncManager {
     try {
       const rows = tables.map(tableToDbRow);
       await supabase.from('tables').upsert(rows, { onConflict: 'id' });
+
+      // Clean up deleted tables
+      const currentIds = tables.map((t) => t.id);
+      const { data: allDbTables } = await supabase.from('tables').select('id');
+      if (allDbTables && allDbTables.length > 0) {
+        const toDelete = allDbTables.filter((t: any) => !currentIds.includes(t.id));
+        for (const item of toDelete) {
+          await supabase.from('tables').delete().eq('id', item.id);
+        }
+      }
     } catch (err) {
       console.warn('Failed to upsert tables batch to Supabase:', err);
     }
@@ -640,23 +729,57 @@ class RealtimeSyncManager {
     }
   }
 
+  public async deleteCategory(id: string): Promise<void> {
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    try {
+      await supabase.from('categories').delete().eq('id', id);
+    } catch (err) {
+      console.warn('Failed to delete category from Supabase:', err);
+    }
+  }
+
   public async persistCategories(categories: Category[]): Promise<void> {
     const supabase = getSupabase();
     if (!supabase) return;
 
     try {
-      const rows = categories.map((c, idx) => ({
-        id: c.id,
-        name: c.name,
-        name_en: c.nameEn || null,
-        icon_name: c.iconName || 'Utensils',
-        description: c.description || null,
-        display_order: idx,
-        updated_at: new Date().toISOString(),
-      }));
-      await supabase.from('categories').upsert(rows, { onConflict: 'id' });
+      if (categories.length > 0) {
+        const rows = categories.map((c, idx) => ({
+          id: c.id,
+          name: c.name,
+          name_en: c.nameEn || null,
+          icon_name: c.iconName || 'Utensils',
+          description: c.description || null,
+          display_order: idx,
+          updated_at: new Date().toISOString(),
+        }));
+        await supabase.from('categories').upsert(rows, { onConflict: 'id' });
+      }
+
+      // Delete removed categories from Supabase
+      const currentIds = categories.map((c) => c.id);
+      const { data: allDbCats } = await supabase.from('categories').select('id');
+      if (allDbCats && allDbCats.length > 0) {
+        const toDelete = allDbCats.filter((c: any) => !currentIds.includes(c.id));
+        for (const item of toDelete) {
+          await supabase.from('categories').delete().eq('id', item.id);
+        }
+      }
     } catch (err) {
       console.warn('Failed to upsert categories to Supabase:', err);
+    }
+  }
+
+  public async deletePromo(code: string): Promise<void> {
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    try {
+      await supabase.from('promos').delete().ilike('code', code.trim());
+    } catch (err) {
+      console.warn('Failed to delete promo from Supabase:', err);
     }
   }
 
@@ -665,17 +788,29 @@ class RealtimeSyncManager {
     if (!supabase) return;
 
     try {
-      const rows = promos.map((p) => ({
-        code: p.code,
-        discount_type: p.discountType,
-        value: p.value,
-        min_order: p.minOrder,
-        max_discount: p.maxDiscount || null,
-        active: p.active,
-        description: p.description || null,
-        updated_at: new Date().toISOString(),
-      }));
-      await supabase.from('promos').upsert(rows, { onConflict: 'code' });
+      if (promos.length > 0) {
+        const rows = promos.map((p) => ({
+          code: p.code,
+          discount_type: p.discountType,
+          value: p.value,
+          min_order: p.minOrder,
+          max_discount: p.maxDiscount || null,
+          active: p.active,
+          description: p.description || null,
+          updated_at: new Date().toISOString(),
+        }));
+        await supabase.from('promos').upsert(rows, { onConflict: 'code' });
+      }
+
+      // Delete removed promos from Supabase
+      const currentCodes = promos.map((p) => p.code.toUpperCase());
+      const { data: allDbPromos } = await supabase.from('promos').select('code');
+      if (allDbPromos && allDbPromos.length > 0) {
+        const toDelete = allDbPromos.filter((p: any) => !currentCodes.includes(p.code?.toUpperCase()));
+        for (const item of toDelete) {
+          await supabase.from('promos').delete().eq('code', item.code);
+        }
+      }
     } catch (err) {
       console.warn('Failed to upsert promos to Supabase:', err);
     }
@@ -697,11 +832,11 @@ class RealtimeSyncManager {
 
     try {
       const [
-        { data: ordersData },
-        { data: menuData },
-        { data: tablesData },
-        { data: categoriesData },
-        { data: promosData },
+        { data: ordersData, error: ordersErr },
+        { data: menuData, error: menuErr },
+        { data: tablesData, error: tablesErr },
+        { data: categoriesData, error: catErr },
+        { data: promosData, error: promoErr },
         { data: settingsData },
       ] = await Promise.all([
         supabase.from('orders').select('*').order('created_at', { ascending: false }),
@@ -714,16 +849,16 @@ class RealtimeSyncManager {
 
       const result: any = {};
 
-      if (ordersData && ordersData.length > 0) {
+      if (!ordersErr && Array.isArray(ordersData)) {
         result.orders = ordersData.map(dbRowToOrder);
       }
-      if (menuData && menuData.length > 0) {
+      if (!menuErr && Array.isArray(menuData)) {
         result.menuItems = menuData.map(dbRowToMenuItem);
       }
-      if (tablesData && tablesData.length > 0) {
+      if (!tablesErr && Array.isArray(tablesData)) {
         result.tables = tablesData.map(dbRowToTable);
       }
-      if (categoriesData && categoriesData.length > 0) {
+      if (!catErr && Array.isArray(categoriesData)) {
         result.categories = categoriesData.map((c: any) => ({
           id: c.id,
           name: c.name,
@@ -732,7 +867,7 @@ class RealtimeSyncManager {
           description: c.description || '',
         }));
       }
-      if (promosData && promosData.length > 0) {
+      if (!promoErr && Array.isArray(promosData)) {
         result.promos = promosData.map((p: any) => ({
           code: p.code,
           discountType: p.discount_type,

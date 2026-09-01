@@ -4,6 +4,7 @@ import {
   CartItem,
   Order,
   Table,
+  TableStatus,
   PromoCode,
   RestaurantSettings,
   SpecialHoliday,
@@ -68,6 +69,9 @@ interface RestaurantContextType {
 
   // Tables
   tables: Table[];
+  addTable: (tableData: { number: string; name?: string; capacity: number; zone: string; status?: TableStatus }) => void;
+  updateTable: (id: string, updates: Partial<Table>) => void;
+  deleteTable: (tableId: string) => void;
   updateTableStatus: (tableId: string, status: Table['status']) => void;
   updateTableGuestCount: (tableId: string, count: number) => void;
   clearTableBill: (tableIdOrNumber: string, options?: { markOrderCompleted?: boolean }) => void;
@@ -539,6 +543,19 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       onMenuItemDeleted: (itemId) => {
         setMenuItems((prev) => prev.filter((m) => m.id !== itemId));
       },
+      onTableCreated: (newTable) => {
+        setTables((prev) => {
+          if (prev.some((t) => t.id === newTable.id)) return prev;
+          return [...prev, newTable];
+        });
+        showToast(`⚡ โต๊ะ "${newTable.number}" เพิ่มเข้าสู่ระบบแล้ว`, 'info');
+      },
+      onTableUpdated: (updatedTable) => {
+        setTables((prev) => prev.map((t) => (t.id === updatedTable.id ? updatedTable : t)));
+      },
+      onTableDeleted: (tableId) => {
+        setTables((prev) => prev.filter((t) => t.id !== tableId));
+      },
       onTableStatusChanged: (tableId, status) => {
         setTables((prev) =>
           prev.map((t) => (t.id === tableId ? { ...t, status } : t))
@@ -556,8 +573,14 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       onCategoryUpdated: (newCategories) => {
         setCategories(newCategories);
       },
+      onCategoryDeleted: (deletedCatId) => {
+        setCategories((prev) => prev.filter((c) => c.id !== deletedCatId));
+      },
       onPromoUpdated: (newPromos) => {
         setPromos(newPromos);
+      },
+      onPromoDeleted: (deletedCode) => {
+        setPromos((prev) => prev.filter((p) => p.code.toUpperCase() !== deletedCode.toUpperCase()));
       },
       onSettingsUpdated: (newSettings) => {
         setSettings((prev) => ({ ...prev, ...newSettings }));
@@ -757,8 +780,9 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // Reassign items in this category to 'all' or another category so they aren't orphaned
     const nextItems = menuItems.map((m) => (m.category === id ? { ...m, category: 'all' } : m));
     setMenuItems(nextItems);
+    realtimeManager.deleteCategory(id);
     realtimeManager.persistCategories(nextCats);
-    realtimeManager.broadcast('CATEGORY_UPDATED', { categories: nextCats });
+    realtimeManager.broadcast('CATEGORY_DELETED', { id, categories: nextCats });
     showToast(`ลบหมวดหมู่ "${target?.name || id}" สำเร็จ`, 'info');
   };
 
@@ -1390,11 +1414,89 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return;
     }
     setOrders((prev) => prev.filter((o) => o.orderStatus !== 'completed'));
+    realtimeManager.clearAllCompletedOrders();
     realtimeManager.broadcast('ALL_COMPLETED_ORDERS_CLEARED', {});
     showToast(`ลบประวัติออเดอร์ที่เสร็จสมบูรณ์ทั้งหมด (${count} รายการ) เรียบร้อยแล้ว`, 'success');
   };
 
   // Table management & Bill clearing
+  const addTable = (tableData: { number: string; name?: string; capacity: number; zone: string; status?: TableStatus }) => {
+    const cleanNumber = tableData.number.trim();
+    if (!cleanNumber) {
+      showToast('กรุณาระบุชื่อหรือหมายเลขโต๊ะ', 'warning');
+      return;
+    }
+    // Check if table number already exists
+    if (tables.some((t) => t.number.toLowerCase() === cleanNumber.toLowerCase())) {
+      showToast(`มีโต๊ะ "${cleanNumber}" ในระบบแล้ว กรุณาใช้ชื่ออื่น`, 'warning');
+      return;
+    }
+
+    const newTable: Table = {
+      id: `tbl_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      number: cleanNumber,
+      capacity: Number(tableData.capacity) || 4,
+      zone: tableData.zone || 'Main Hall',
+      status: tableData.status || 'available',
+      guestCount: 0,
+    };
+
+    const nextTables = [...tables, newTable];
+    setTables(nextTables);
+    realtimeManager.persistTable(newTable);
+    realtimeManager.broadcast('TABLE_CREATED', { table: newTable, tables: nextTables });
+    showToast(`เพิ่มโต๊ะ "${newTable.number}" เรียบร้อยแล้ว ✨`, 'success');
+  };
+
+  const updateTable = (id: string, updates: Partial<Table>) => {
+    let updatedTable: Table | undefined;
+    const nextTables = tables.map((t) => {
+      if (t.id === id) {
+        const newNumber = updates.number ? updates.number.trim() : t.number;
+        updatedTable = {
+          ...t,
+          ...updates,
+          number: newNumber,
+          capacity: updates.capacity !== undefined ? Number(updates.capacity) : t.capacity,
+          zone: updates.zone !== undefined ? updates.zone : t.zone,
+        };
+        return updatedTable;
+      }
+      return t;
+    });
+
+    if (updatedTable) {
+      setTables(nextTables);
+      realtimeManager.persistTable(updatedTable);
+      realtimeManager.broadcast('TABLE_UPDATED', { table: updatedTable, tables: nextTables });
+      showToast(`บันทึกข้อมูลโต๊ะ "${updatedTable.number}" สำเร็จ ✨`, 'success');
+    }
+  };
+
+  const deleteTable = (tableId: string) => {
+    const target = tables.find((t) => t.id === tableId);
+    if (!target) return;
+
+    // Check if table has active order
+    const hasActiveOrder = orders.some(
+      (o) =>
+        (o.tableNumber === target.number || o.id === target.currentOrderId) &&
+        o.orderStatus !== 'completed' &&
+        o.orderStatus !== 'cancelled'
+    );
+
+    if (hasActiveOrder) {
+      showToast(`ไม่สามารถลบโต๊ะ "${target.number}" ได้ เนื่องจากมีออเดอร์ที่ยังไม่เสร็จสิ้น/ยังไม่เคลียร์บิล`, 'warning');
+      return;
+    }
+
+    const nextTables = tables.filter((t) => t.id !== tableId);
+    setTables(nextTables);
+    realtimeManager.deleteTable(tableId);
+    realtimeManager.broadcast('TABLE_DELETED', { tableId, tables: nextTables });
+    showToast(`ลบโต๊ะ "${target.number}" เรียบร้อยแล้ว`, 'info');
+  };
+
   const clearTableBill = (
     tableIdOrNumber: string,
     options: { markOrderCompleted?: boolean } = { markOrderCompleted: true }
@@ -1517,8 +1619,9 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (appliedPromo?.code.toUpperCase() === code.toUpperCase()) {
       setAppliedPromo(null);
     }
+    realtimeManager.deletePromo(code);
     realtimeManager.persistPromos(nextPromos);
-    realtimeManager.broadcast('PROMO_UPDATED', { promos: nextPromos });
+    realtimeManager.broadcast('PROMO_DELETED', { code, promos: nextPromos });
     showToast(`ลบโค้ดโปรโมชั่น "${code}" แล้ว`, 'info');
   };
 
@@ -1572,6 +1675,9 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         activeCustomerOrder,
         setActiveCustomerOrder,
         tables,
+        addTable,
+        updateTable,
+        deleteTable,
         updateTableStatus,
         updateTableGuestCount,
         clearTableBill,
