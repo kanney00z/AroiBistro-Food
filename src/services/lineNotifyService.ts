@@ -1,4 +1,5 @@
 import { Order, RestaurantSettings } from '../types';
+import { uploadSlipToSupabase } from './supabaseService';
 
 export interface LineSendResult {
   success: boolean;
@@ -31,31 +32,12 @@ export async function uploadSlipImageToPublicUrl(slipImage: string): Promise<str
   }
 
   const rawBase64 = slipImage.includes('base64,') ? slipImage.split('base64,')[1] : slipImage;
+  const isPng = slipImage.includes('image/png');
+  const mimeType = isPng ? 'image/png' : 'image/jpeg';
+  const fileExt = isPng ? 'png' : 'jpg';
 
-  // 2. Try FreeImage.host API (fast, permanent HTTPS image hosting)
-  try {
-    const formData = new FormData();
-    formData.append('key', '6d207e02198a84728dd10f23001404c0');
-    formData.append('action', 'upload');
-    formData.append('source', rawBase64);
-    formData.append('format', 'json');
-
-    const res = await fetch('https://freeimage.host/api/1/upload', {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.image?.url) {
-        return data.image.url;
-      }
-    }
-  } catch (err) {
-    console.warn('FreeImage host upload error, trying tmpfiles fallback:', err);
-  }
-
-  // 3. Try tmpfiles.org API fallback
+  // Helper to convert base64 to Blob in browser or Node
+  let imageBlob: Blob | null = null;
   try {
     const byteCharacters = atob(rawBase64);
     const byteNumbers = new Array(byteCharacters.length);
@@ -63,54 +45,86 @@ export async function uploadSlipImageToPublicUrl(slipImage: string): Promise<str
       byteNumbers[i] = byteCharacters.charCodeAt(i);
     }
     const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: 'image/jpeg' });
+    imageBlob = new Blob([byteArray], { type: mimeType });
+  } catch (err) {
+    console.warn('Failed to parse base64 slip:', err);
+  }
 
-    const form = new FormData();
-    form.append('file', blob, `slip_${Date.now()}.jpg`);
+  // 2. Primary Provider: Litterbox (Temporary 72-hour fast public HTTPS direct image CDN)
+  if (imageBlob) {
+    try {
+      const formData = new FormData();
+      formData.append('reqtype', 'fileupload');
+      formData.append('time', '72h');
+      formData.append('fileToUpload', imageBlob, `slip_${Date.now()}.${fileExt}`);
 
-    const res = await fetch('https://tmpfiles.org/api/v1/upload', {
+      const res = await fetch('https://litterbox.catbox.moe/resources/internals/api.php', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (res.ok) {
+        const text = await res.text();
+        if (text && (text.startsWith('https://') || text.startsWith('http://'))) {
+          const directUrl = text.trim();
+          return directUrl;
+        }
+      }
+    } catch (err) {
+      console.warn('Litterbox upload error, trying Uguu fallback:', err);
+    }
+  }
+
+  // 3. Secondary Provider: Uguu.se (Fast public HTTPS direct image host)
+  if (imageBlob) {
+    try {
+      const formData = new FormData();
+      formData.append('files[]', imageBlob, `slip_${Date.now()}.${fileExt}`);
+
+      const res = await fetch('https://uguu.se/upload.php', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.files?.[0]?.url) {
+          return data.files[0].url;
+        }
+      }
+    } catch (err) {
+      console.warn('Uguu upload error, trying Supabase fallback:', err);
+    }
+  }
+
+  // 4. Provider: Supabase Storage (if configured)
+  try {
+    const supabaseUrl = await uploadSlipToSupabase(slipImage);
+    if (supabaseUrl) {
+      return supabaseUrl;
+    }
+  } catch (err) {
+    console.warn('Supabase storage fallback error:', err);
+  }
+
+  // 5. Provider: Local / Custom Domain backend /api/upload-slip
+  try {
+    const res = await fetch('/api/upload-slip', {
       method: 'POST',
-      body: form,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ image: slipImage }),
     });
 
     if (res.ok) {
       const data = await res.json();
-      if (data?.data?.url) {
-        // Convert tmpfiles view url (https://tmpfiles.org/12345/slip.jpg) to direct link (https://tmpfiles.org/dl/12345/slip.jpg)
-        return data.data.url.replace('tmpfiles.org/', 'tmpfiles.org/dl/');
+      if (data?.url) {
+        return data.url;
       }
     }
   } catch (err) {
-    console.warn('tmpfiles host upload error, trying catbox fallback:', err);
-  }
-
-  // 4. Try catbox.moe fallback
-  try {
-    const byteCharacters = atob(rawBase64);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: 'image/jpeg' });
-
-    const form = new FormData();
-    form.append('reqtype', 'fileupload');
-    form.append('fileToUpload', blob, `slip_${Date.now()}.jpg`);
-
-    const res = await fetch('https://catbox.moe/user/api.php', {
-      method: 'POST',
-      body: form,
-    });
-
-    if (res.ok) {
-      const text = await res.text();
-      if (text.startsWith('http')) {
-        return text.trim();
-      }
-    }
-  } catch (err) {
-    console.warn('Catbox upload fallback error:', err);
+    console.warn('Backend /api/upload-slip fallback error:', err);
   }
 
   return null;
@@ -1015,16 +1029,8 @@ export async function sendOrderLineNotification(
   }
 
   const flexMessage = buildOrderFlexMessage(order, settings, isRoundAdd, slipPublicUrl);
+  // Send single Flex Message containing the full receipt bill and embedded slip preview
   const messages: any[] = [flexMessage];
-
-  // If slip public URL is available, also append a full high-resolution LINE Image Message
-  if (slipPublicUrl && (slipPublicUrl.startsWith('https://') || slipPublicUrl.startsWith('http://'))) {
-    messages.push({
-      type: 'image',
-      originalContentUrl: slipPublicUrl,
-      previewImageUrl: slipPublicUrl,
-    });
-  }
 
   return await sendLineMessages(messages, settings.lineChannelAccessToken, settings.lineTargetId);
 }

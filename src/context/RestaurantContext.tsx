@@ -1634,7 +1634,7 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     showToast('บันทึกการตั้งค่าร้านสำเร็จ', 'success');
   };
 
-  // Send Test LINE Notification (Includes Sample Slip Image)
+  // Send Test LINE Notification (Includes Sample Slip Image in Flex Bill only)
   const sendLineTestNotification = async (
     customToken?: string,
     customTargetId?: string
@@ -1643,14 +1643,8 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const targetIdToUse = customTargetId !== undefined ? customTargetId : settings.lineTargetId;
     const sampleSlipUrl = 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=800&auto=format&fit=crop&q=80';
     const testFlex = buildTestFlexMessage(settings, sampleSlipUrl);
-    const messages = [
-      testFlex,
-      {
-        type: 'image',
-        originalContentUrl: sampleSlipUrl,
-        previewImageUrl: sampleSlipUrl,
-      },
-    ];
+    // Send only the single test Flex message with slip embedded cleanly inside the bill
+    const messages = [testFlex];
     return await sendLineFlexMessage(messages, tokenToUse, targetIdToUse);
   };
 

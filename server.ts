@@ -6,12 +6,80 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Body parser for JSON
-  app.use(express.json({ limit: '15mb' }));
+  // Body parser for JSON with large limit for image slips
+  app.use(express.json({ limit: '25mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+
+  // In-memory store for slip images (with LRU eviction to prevent memory leaks)
+  const slipsStore = new Map<string, { buffer: Buffer; mimeType: string; createdAt: number }>();
+
+  // Helper to determine base public URL from request
+  const getPublicBaseUrl = (req: express.Request): string => {
+    const forwardedHost = (req.headers['x-forwarded-host'] as string) || req.headers.host || 'localhost:3000';
+    const forwardedProto = (req.headers['x-forwarded-proto'] as string) || (req.secure ? 'https' : 'http');
+    // If running in development cloud container or custom domain, ensure https if not localhost
+    const proto = forwardedHost.includes('localhost') ? forwardedProto : 'https';
+    return `${proto}://${forwardedHost}`;
+  };
+
+  // Upload Slip Endpoint: receives base64 slip and returns public HTTPS URL
+  app.post('/api/upload-slip', (req, res) => {
+    try {
+      const { image } = req.body || {};
+      if (!image || typeof image !== 'string') {
+        return res.status(400).json({ success: false, message: 'Missing image data' });
+      }
+
+      const rawBase64 = image.includes('base64,') ? image.split('base64,')[1] : image;
+      const mimeType = image.includes('image/png')
+        ? 'image/png'
+        : image.includes('image/webp')
+        ? 'image/webp'
+        : 'image/jpeg';
+      const buffer = Buffer.from(rawBase64, 'base64');
+      const slipId = `slip_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+      // Evict oldest entries if store exceeds 300 items
+      if (slipsStore.size > 300) {
+        const oldestKey = slipsStore.keys().next().value;
+        if (oldestKey) slipsStore.delete(oldestKey);
+      }
+
+      slipsStore.set(slipId, { buffer, mimeType, createdAt: Date.now() });
+
+      const baseUrl = getPublicBaseUrl(req);
+      const publicUrl = `${baseUrl}/api/slips/${slipId}.jpg`;
+
+      return res.json({
+        success: true,
+        url: publicUrl,
+        slipId,
+      });
+    } catch (err: any) {
+      console.error('Error handling /api/upload-slip:', err);
+      return res.status(500).json({ success: false, message: err.message || 'Failed to process slip image' });
+    }
+  });
+
+  // Serve Public Slip Images for LINE Messaging API
+  app.get('/api/slips/:slipId', (req, res) => {
+    const { slipId } = req.params;
+    const cleanId = slipId.replace(/\.(jpg|jpeg|png|webp)$/i, '');
+    const slip = slipsStore.get(cleanId);
+
+    if (!slip) {
+      return res.status(404).send('Slip image not found or expired');
+    }
+
+    res.setHeader('Content-Type', slip.mimeType || 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    return res.send(slip.buffer);
+  });
 
   // Health check endpoint
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', time: new Date().toISOString() });
+    res.json({ status: 'ok', time: new Date().toISOString(), slipsCached: slipsStore.size });
   });
 
   // LINE Notification Proxy Endpoint

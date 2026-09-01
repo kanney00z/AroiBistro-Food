@@ -429,3 +429,38 @@ export function tableToDbRow(table: Table): any {
     updated_at: new Date().toISOString(),
   };
 }
+
+/**
+ * Upload slip image to Supabase Storage if configured
+ */
+export async function uploadSlipToSupabase(slipBase64: string): Promise<string | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+
+  try {
+    const rawBase64 = slipBase64.includes('base64,') ? slipBase64.split('base64,')[1] : slipBase64;
+    const mimeType = slipBase64.includes('image/png') ? 'image/png' : 'image/jpeg';
+    const byteCharacters = atob(rawBase64);
+    const byteArray = new Uint8Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteArray[i] = byteCharacters.charCodeAt(i);
+    }
+    const fileName = `slip_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.jpg`;
+
+    const { data, error } = await supabase.storage.from('slips').upload(fileName, byteArray, {
+      contentType: mimeType,
+      upsert: true,
+    });
+
+    if (!error && data) {
+      const { data: publicUrlData } = supabase.storage.from('slips').getPublicUrl(fileName);
+      if (publicUrlData?.publicUrl) {
+        return publicUrlData.publicUrl;
+      }
+    }
+  } catch (err) {
+    console.warn('Supabase storage upload error:', err);
+  }
+  return null;
+}
+
