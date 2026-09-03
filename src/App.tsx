@@ -11,6 +11,7 @@ import { TableScannerModal } from './components/customer/TableScannerModal';
 import { CartDrawer } from './components/customer/CartDrawer';
 import { CheckoutModal } from './components/customer/CheckoutModal';
 import { OrderTrackerModal } from './components/customer/OrderTrackerModal';
+import { MapPickerModal } from './components/customer/MapPickerModal';
 import { Toast } from './components/common/Toast';
 
 // Admin Components
@@ -155,6 +156,7 @@ const CustomerStorefront: React.FC = () => {
       <CartDrawer />
       <CheckoutModal />
       <OrderTrackerModal />
+      <MapPickerModal />
 
       {/* Footer */}
       <footer className="bg-[#111112] border-t border-white/10 py-10 mt-16 text-center text-xs text-stone-400 space-y-2">

@@ -1,6 +1,6 @@
 {
   "name": "AroiBistro Food Ordering & Admin Backoffice",
   "description": "ระบบสั่งอาหารออนไลน์ระดับพรีเมียม พร้อมระบบจัดการหลังบ้านแอดมิน (KDS Kitchen, Menu, Table, Analytics)",
-  "requestFramePermissions": ["camera"],
+  "requestFramePermissions": ["camera", "geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

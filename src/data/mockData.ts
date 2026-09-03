@@ -51,7 +51,19 @@ export const INITIAL_SETTINGS: RestaurantSettings = {
   serviceChargeRate: 0.10,
   vatRate: 0.07,
   enableServiceCharge: true,
-  deliveryBaseFee: 40,
+  
+  // Delivery radius & pricing configurations
+  restaurantLat: 13.7367, // ละติจูดร้าน (สุขุมวิท 55 ทองหล่อ)
+  restaurantLng: 100.5831, // ลองจิจูดร้าน
+  deliveryBaseFee: 40, // ค่าส่งเริ่มต้น ฿40
+  deliveryMaxDistanceKm: 15, // รัศมีส่งสูงสุด 15 กม.
+  deliveryPerKmFee: 10, // ฿10 ต่อ กม. หลังจากระยะทางเริ่มต้น
+  deliveryFreeKm: 3, // 3 กม. แรกคิดเพียงค่าส่งเริ่มต้น
+  deliveryFreeMinOrder: 800, // สั่งอาหารครบ ฿800 ส่งฟรี
+  deliveryMinOrderAmount: 120, // ยอดสั่งขั้นต่ำสำหรับเดลิเวอรี่
+  allowOutOfRadiusOrder: false, // ป้องกันการสั่งนอกรัศมี
+  outOfRadiusMessage: 'ขออภัยครับ ตำแหน่งที่คุณเลือกอยู่นอกพื้นที่บริการจัดส่ง (ร้านส่งได้สูงสุด 15 กม.) แนะนำเลือกเป็นสั่งรับที่หน้าร้านครับ',
+
   adminPin: '1234',
   heroBanner: DEFAULT_HERO_BANNER,
   lineNotifyEnabled: true,

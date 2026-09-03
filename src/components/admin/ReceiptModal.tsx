@@ -73,7 +73,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose }) =>
               <div className="flex justify-between">
                 <span>ประเภท:</span>
                 <span className="font-bold uppercase">
-                  {order.orderType === 'dine_in' ? `ทานที่ร้าน (โต๊ะ ${order.tableNumber})` : 'รับกลับบ้าน (Takeaway)'}
+                  {order.orderType === 'dine_in'
+                    ? `ทานที่ร้าน (โต๊ะ ${order.tableNumber})`
+                    : order.orderType === 'delivery'
+                    ? 'จัดส่งเดลิเวอรี่ (Delivery)'
+                    : 'รับกลับบ้าน (Takeaway)'}
                 </span>
               </div>
               {(order.roundsCount || 1) > 1 && (
@@ -86,6 +90,24 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose }) =>
                 <span>ลูกค้า:</span>
                 <span>{order.customerName} ({order.customerPhone})</span>
               </div>
+              {(order.deliveryLocation || order.deliveryAddress) && (
+                <div className="pt-1 border-t border-dashed border-stone-300 space-y-0.5 text-[10px]">
+                  <div className="font-bold text-stone-900">
+                    📍 ที่อยู่จัดส่ง: {order.deliveryLocation?.address || order.deliveryAddress}
+                  </div>
+                  {order.deliveryLocation?.buildingDetails && (
+                    <div className="text-stone-700">🏢 {order.deliveryLocation.buildingDetails}</div>
+                  )}
+                  {order.deliveryLocation?.driverNote && (
+                    <div className="text-stone-700">💬 โน้ตไรเดอร์: {order.deliveryLocation.driverNote}</div>
+                  )}
+                  {order.deliveryLocation?.lat && order.deliveryLocation?.lng && (
+                    <div className="text-stone-500 font-mono text-[9px]">
+                      พิกัด GPS: {order.deliveryLocation.lat.toFixed(5)}, {order.deliveryLocation.lng.toFixed(5)} (~{order.deliveryLocation.distanceKm || 0.5} กม.)
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Items */}
@@ -145,6 +167,12 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose }) =>
                 <div className="flex justify-between">
                   <span>ค่าบริการ (Service Charge):</span>
                   <span>฿{order.serviceCharge.toFixed(2)}</span>
+                </div>
+              )}
+              {order.deliveryFee && order.deliveryFee > 0 && (
+                <div className="flex justify-between">
+                  <span>ค่าจัดส่ง (Delivery Fee):</span>
+                  <span>฿{order.deliveryFee.toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm font-black border-t border-stone-900 pt-1">

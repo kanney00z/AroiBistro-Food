@@ -140,7 +140,12 @@ export function buildOrderFlexMessage(
   slipPublicUrl?: string
 ): any {
   const isDineIn = order.orderType === 'dine_in';
-  const tableText = isDineIn ? (order.tableNumber ? `โต๊ะ ${order.tableNumber}` : 'ทานที่ร้าน (โต๊ะไม่ระบุ)') : 'สั่งกลับบ้าน (Takeaway)';
+  const isDelivery = order.orderType === 'delivery';
+  const tableText = isDineIn
+    ? (order.tableNumber ? `โต๊ะ ${order.tableNumber}` : 'ทานที่ร้าน (โต๊ะไม่ระบุ)')
+    : isDelivery
+    ? 'จัดส่งเดลิเวอรี่ (Delivery)'
+    : 'สั่งกลับบ้าน (Takeaway)';
   const roundText = order.roundsCount && order.roundsCount > 1 
     ? `🍳 สั่งเพิ่ม (รอบที่ ${order.roundsCount})` 
     : '🔔 ออเดอร์ใหม่';
@@ -154,6 +159,15 @@ export function buildOrderFlexMessage(
     month: 'short',
     year: 'numeric',
   });
+
+  // Delivery Location Coordinates & Maps URI
+  const hasDeliveryLocation = isDelivery && (order.deliveryLocation || order.deliveryAddress);
+  const deliveryLat = order.deliveryLocation?.lat;
+  const deliveryLng = order.deliveryLocation?.lng;
+  const googleMapsUrl =
+    deliveryLat && deliveryLng
+      ? `https://www.google.com/maps/search/?api=1&query=${deliveryLat},${deliveryLng}`
+      : undefined;
 
   // Build items contents
   const itemRows: any[] = [];
@@ -342,7 +356,7 @@ export function buildOrderFlexMessage(
           contents: [
             {
               type: 'text',
-              text: `${isDineIn ? '🍽️' : '🛍️'} ${tableText}`,
+              text: `${isDineIn ? '🍽️' : isDelivery ? '🛵' : '🛍️'} ${tableText}`,
               size: 'xl',
               color: '#FFFFFF',
               weight: 'bold',
@@ -438,6 +452,98 @@ export function buildOrderFlexMessage(
             },
           ],
         },
+
+        // Dedicated Delivery Pin & Location Section
+        ...(hasDeliveryLocation
+          ? [
+              {
+                type: 'box',
+                layout: 'vertical' as const,
+                backgroundColor: '#1A1815',
+                cornerRadius: '10px',
+                borderColor: '#FF5C0055',
+                borderWidth: '1px',
+                paddingAll: '12px',
+                margin: 'md' as const,
+                contents: [
+                  {
+                    type: 'box',
+                    layout: 'horizontal' as const,
+                    contents: [
+                      {
+                        type: 'text',
+                        text: '🛵 สถานที่จัดส่ง (DELIVERY PIN)',
+                        size: 'xs',
+                        color: '#FF5C00',
+                        weight: 'bold',
+                        flex: 1,
+                      },
+                      ...(order.deliveryLocation?.distanceKm
+                        ? [
+                            {
+                              type: 'text',
+                              text: `~${order.deliveryLocation.distanceKm} กม.`,
+                              size: 'xxs',
+                              color: '#FBBF24',
+                              weight: 'bold',
+                            },
+                          ]
+                        : []),
+                    ],
+                  },
+                  {
+                    type: 'text',
+                    text: `📍 ${order.deliveryLocation?.address || order.deliveryAddress || 'ไม่ระบุที่อยู่'}`,
+                    size: 'xs',
+                    color: '#FFFFFF',
+                    wrap: true,
+                    margin: 'xs',
+                    weight: 'bold',
+                  },
+                  ...(order.deliveryLocation?.buildingDetails
+                    ? [
+                        {
+                          type: 'text',
+                          text: `🏢 รายละเอียด: ${order.deliveryLocation.buildingDetails}`,
+                          size: 'xxs',
+                          color: '#FBBF24',
+                          wrap: true,
+                          margin: 'xs',
+                        },
+                      ]
+                    : []),
+                  ...(order.deliveryLocation?.driverNote
+                    ? [
+                        {
+                          type: 'text',
+                          text: `💬 โน้ตถึงไรเดอร์: ${order.deliveryLocation.driverNote}`,
+                          size: 'xxs',
+                          color: '#38BDF8',
+                          wrap: true,
+                          margin: 'xs',
+                        },
+                      ]
+                    : []),
+                  ...(googleMapsUrl
+                    ? [
+                        {
+                          type: 'button',
+                          style: 'primary',
+                          color: '#FF5C00',
+                          height: 'sm',
+                          margin: 'md',
+                          action: {
+                            type: 'uri',
+                            label: '📍 นำทาง Google Maps',
+                            uri: googleMapsUrl,
+                          },
+                        },
+                      ]
+                    : []),
+                ],
+              },
+            ]
+          : []),
 
         // Items Header
         {
@@ -561,6 +667,29 @@ export function buildOrderFlexMessage(
                       {
                         type: 'text',
                         text: formatTHB(order.serviceCharge),
+                        size: 'xs',
+                        color: '#FFFFFF',
+                        align: 'end',
+                      },
+                    ],
+                  },
+                ]
+              : []),
+            ...(order.deliveryFee && order.deliveryFee > 0
+              ? [
+                  {
+                    type: 'box',
+                    layout: 'horizontal' as const,
+                    contents: [
+                      {
+                        type: 'text',
+                        text: 'ค่าจัดส่งเดลิเวอรี่ (Delivery Fee)',
+                        size: 'xs',
+                        color: '#A8A29E',
+                      },
+                      {
+                        type: 'text',
+                        text: formatTHB(order.deliveryFee),
                         size: 'xs',
                         color: '#FFFFFF',
                         align: 'end',

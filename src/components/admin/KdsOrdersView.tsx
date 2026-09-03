@@ -22,6 +22,9 @@ import {
   ChevronUp,
   CheckCheck,
   X,
+  MapPin,
+  Compass,
+  ExternalLink,
   Image as ImageIcon,
 } from 'lucide-react';
 import { useRestaurant } from '../../context/RestaurantContext';
@@ -112,11 +115,14 @@ export const KdsOrdersView: React.FC = () => {
                 className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
                   order.orderType === 'dine_in'
                     ? 'bg-[#FF5C00]/20 text-[#FF5C00] border border-[#FF5C00]/30'
+                    : order.orderType === 'delivery'
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                     : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
                 }`}
               >
                 {order.orderType === 'dine_in' && `โต๊ะ ${order.tableNumber}`}
                 {order.orderType === 'pickup' && 'รับกลับ'}
+                {order.orderType === 'delivery' && '🛵 เดลิเวอรี่'}
               </span>
 
               {(order.roundsCount || 1) > 1 && (
@@ -148,21 +154,54 @@ export const KdsOrdersView: React.FC = () => {
                   🛍️ {takeawayCount}
                 </span>
               )}
+              {order.orderType === 'delivery' && (
+                <span className="px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-300 border border-emerald-500/20">
+                  🛵 ส่ง
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Delivery address if delivery */}
-          {order.deliveryAddress && (
-            <div className="text-[11px] text-stone-300 bg-[#0A0A0B] p-2.5 rounded-xl border border-white/10 mb-2 space-y-1 font-medium">
-              <div className="flex items-start gap-1.5 text-white">
-                <span className="text-[#FF5C00] shrink-0 font-bold">📍</span>
-                <span className="line-clamp-2">{order.deliveryAddress}</span>
+          {/* Delivery address & Pin coordinates if delivery */}
+          {(order.deliveryLocation || order.deliveryAddress) && (
+            <div className="text-[11px] text-stone-300 bg-[#0A0A0B] p-2.5 rounded-xl border border-white/10 mb-2 space-y-1.5 font-medium">
+              <div className="flex items-start justify-between gap-1.5 text-white">
+                <div className="flex items-start gap-1.5 flex-1 min-w-0">
+                  <MapPin className="w-3.5 h-3.5 text-[#FF5C00] shrink-0 mt-0.5" />
+                  <span className="line-clamp-2 text-xs font-bold text-stone-200">
+                    {order.deliveryLocation?.address || order.deliveryAddress}
+                  </span>
+                </div>
+                {order.deliveryLocation?.lat && order.deliveryLocation?.lng && (
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${order.deliveryLocation.lat},${order.deliveryLocation.lng}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#FF5C00]/20 hover:bg-[#FF5C00]/30 text-[#FF5C00] text-[10px] font-bold border border-[#FF5C00]/30 shrink-0 transition-colors"
+                    title="เปิดแผนที่นำทาง Google Maps"
+                  >
+                    <Compass className="w-3 h-3" />
+                    <span>แผนที่</span>
+                    <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                )}
               </div>
-              {order.deliveryLocation?.distanceKm !== undefined && (
-                <div className="flex items-center gap-2 text-[10px] text-stone-400 font-mono">
-                  <span className="text-[#FF5C00] font-bold">ระยะทาง: {order.deliveryLocation.distanceKm} กม.</span>
+
+              {(order.deliveryLocation?.distanceKm !== undefined ||
+                order.deliveryLocation?.buildingDetails ||
+                order.deliveryLocation?.driverNote) && (
+                <div className="text-[10px] text-stone-400 space-y-0.5 pt-1 border-t border-white/5">
+                  {order.deliveryLocation?.distanceKm !== undefined && (
+                    <div className="text-[#FF5C00] font-mono font-bold">
+                      📍 ระยะทาง: ~{order.deliveryLocation.distanceKm} กม.
+                      {order.deliveryFee ? ` (ค่าส่ง ฿${order.deliveryFee})` : ''}
+                    </div>
+                  )}
                   {order.deliveryLocation?.buildingDetails && (
-                    <span>• {order.deliveryLocation.buildingDetails}</span>
+                    <div className="text-amber-300">🏢 {order.deliveryLocation.buildingDetails}</div>
+                  )}
+                  {order.deliveryLocation?.driverNote && (
+                    <div className="text-sky-300">💬 โน้ต: {order.deliveryLocation.driverNote}</div>
                   )}
                 </div>
               )}
@@ -461,6 +500,7 @@ export const KdsOrdersView: React.FC = () => {
             { id: 'all', label: 'ทั้งหมด' },
             { id: 'dine_in', label: '🍽️ ทานที่ร้าน' },
             { id: 'pickup', label: '🛍️ รับกลับ' },
+            { id: 'delivery', label: '🛵 เดลิเวอรี่' },
           ].map((f) => (
             <button
               key={f.id}

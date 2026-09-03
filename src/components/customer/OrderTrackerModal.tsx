@@ -15,6 +15,9 @@ import {
   Plus,
   Package,
   Ban,
+  Building,
+  ExternalLink,
+  Compass,
   Image as ImageIcon,
   ZoomIn,
 } from 'lucide-react';
@@ -184,12 +187,64 @@ export const OrderTrackerModal: React.FC = () => {
                 <span>
                   {currentOrder.orderType === 'dine_in' && `เสิร์ฟที่โต๊ะ ${currentOrder.tableNumber}`}
                   {currentOrder.orderType === 'pickup' && `รับกลับบ้านที่หน้าร้าน`}
+                  {currentOrder.orderType === 'delivery' && `จัดส่งเดลิเวอรี่ตามหมุด GPS`}
                 </span>
                 <span className="text-[11px] text-stone-300 font-semibold">
                   (ทานร้าน {dineInCount} • กลับบ้าน {takeawayCount})
                 </span>
               </div>
             </div>
+
+            {/* Delivery Location Card in Order Tracker */}
+            {currentOrder.orderType === 'delivery' && (currentOrder.deliveryLocation || currentOrder.deliveryAddress) && (
+              <div className="p-4 rounded-2xl bg-[#161618] border border-[#FF5C00]/30 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="label-caps text-[#FF5C00] flex items-center gap-1.5">
+                    <Bike className="w-3.5 h-3.5" />
+                    สถานที่จัดส่ง (Delivery Pin)
+                  </span>
+                  {currentOrder.deliveryLocation?.distanceKm && (
+                    <span className="text-[10px] font-bold text-amber-400 font-mono">
+                      ~{currentOrder.deliveryLocation.distanceKm} กม.
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-start gap-2.5">
+                  <MapPin className="w-4 h-4 text-[#FF5C00] shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold text-white leading-relaxed">
+                      {currentOrder.deliveryLocation?.address || currentOrder.deliveryAddress}
+                    </div>
+                    {currentOrder.deliveryLocation?.buildingDetails && (
+                      <div className="text-[11px] text-stone-300 mt-0.5 flex items-center gap-1">
+                        <Building className="w-3 h-3 text-amber-400 shrink-0" />
+                        <span>{currentOrder.deliveryLocation.buildingDetails}</span>
+                      </div>
+                    )}
+                    {currentOrder.deliveryLocation?.driverNote && (
+                      <div className="text-[11px] text-stone-400 mt-0.5 flex items-center gap-1">
+                        <FileText className="w-3 h-3 text-emerald-400 shrink-0" />
+                        <span>โน้ต: {currentOrder.deliveryLocation.driverNote}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {currentOrder.deliveryLocation?.lat && currentOrder.deliveryLocation?.lng && (
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${currentOrder.deliveryLocation.lat},${currentOrder.deliveryLocation.lng}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 flex items-center justify-center gap-1.5 w-full py-2 rounded-xl bg-[#FF5C00]/15 hover:bg-[#FF5C00]/25 border border-[#FF5C00]/40 text-[#FF5C00] text-xs font-bold transition-all"
+                  >
+                    <Compass className="w-3.5 h-3.5" />
+                    <span>เปิดดูตำแหน่งบน Google Maps</span>
+                    <ExternalLink className="w-3 h-3 ml-0.5" />
+                  </a>
+                )}
+              </div>
+            )}
 
             {/* Step-by-step Timeline */}
             <div className="space-y-4 pl-2">

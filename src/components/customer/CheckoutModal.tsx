@@ -14,6 +14,11 @@ import {
   ArrowRight,
   Upload,
   UtensilsCrossed,
+  Bike,
+  MapPin,
+  Building,
+  FileText,
+  Compass,
   Image as ImageIcon,
   Trash2,
   ZoomIn,
@@ -21,6 +26,8 @@ import {
   Copy,
   Check,
   Download,
+  AlertTriangle,
+  ShieldAlert,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useRestaurant } from '../../context/RestaurantContext';
@@ -38,12 +45,19 @@ export const CheckoutModal: React.FC = () => {
     cartSubtotal,
     cartDiscount,
     cartServiceCharge,
+    cartDeliveryFee,
+    deliveryDistanceKm,
+    isDeliveryOutOfRange,
+    isDeliveryFree,
     orderType,
     selectedTable,
     setSelectedTable,
     selectTableManually,
     isTableScanned,
     setIsTableScannerModalOpen,
+    deliveryLocation,
+    setDeliveryLocation,
+    setIsMapPickerOpen,
     tables,
     activeTableOrder,
     isAddingToExistingOrder,
@@ -260,6 +274,8 @@ export const CheckoutModal: React.FC = () => {
                   ? `เพิ่มรายการเข้าบิลเดิม #${activeTableOrder.orderNumber} ${activeTableOrder.tableNumber ? `• โต๊ะ ${activeTableOrder.tableNumber}` : ''}`
                   : orderType === 'dine_in'
                   ? `ทานที่ร้าน • โต๊ะ ${selectedTable || 'เคาน์เตอร์'}`
+                  : orderType === 'delivery'
+                  ? `จัดส่งเดลิเวอรี่ • 📍 ปักหมุดแผนที่ GPS`
                   : `รับอาหารกลับบ้าน`}
               </p>
             </div>
@@ -412,6 +428,130 @@ export const CheckoutModal: React.FC = () => {
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Delivery Mode Location Pin Box */}
+              {orderType === 'delivery' && (
+                <div className="p-4 rounded-2xl bg-[#0A0A0B] border border-white/10 space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <span className="label-caps text-[#FF5C00] flex items-center gap-1.5">
+                      <Bike className="w-3.5 h-3.5" />
+                      ตำแหน่งจัดส่งอาหาร (Delivery Address & Pin)
+                    </span>
+                    <button
+                      type="button"
+                      id="btn-checkout-edit-pin"
+                      onClick={() => setIsMapPickerOpen(true)}
+                      className="text-xs font-bold text-[#FF5C00] hover:text-[#FF7729] flex items-center gap-1 bg-[#FF5C00]/10 hover:bg-[#FF5C00]/20 px-2.5 py-1 rounded-lg border border-[#FF5C00]/30 transition-all cursor-pointer"
+                    >
+                      <MapPin className="w-3 h-3 animate-bounce" />
+                      <span>{deliveryLocation ? 'แก้ไขหมุดแผนที่' : 'ปักหมุดบนแผนที่'}</span>
+                    </button>
+                  </div>
+
+                  {/* Pinned Address Details Card */}
+                  <div className="p-3 rounded-xl bg-[#161618] border border-white/10 space-y-2.5">
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-[#FF5C00]/20 text-[#FF5C00] flex items-center justify-center shrink-0 mt-0.5">
+                        <MapPin className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold text-white leading-relaxed">
+                          {deliveryLocation?.address || 'สุขุมวิท 55 ซอยทองหล่อ 13 แขวงคลองตันเหนือ กรุงเทพฯ'}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                          <span className="text-[11px] text-stone-400 font-mono">
+                            ระยะทาง ~{deliveryDistanceKm} กม.
+                          </span>
+
+                          {isDeliveryOutOfRange ? (
+                            <span className="text-[10px] font-bold text-rose-400 bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 rounded-md flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" />
+                              <span>เกินรัศมีร้าน ({settings.deliveryMaxDistanceKm || 15} กม.)</span>
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-md flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>ในเขตจัดส่ง</span>
+                            </span>
+                          )}
+
+                          {isDeliveryFree && (
+                            <span className="text-[10px] font-bold text-emerald-300 bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 rounded-md flex items-center gap-1">
+                              <Sparkles className="w-3 h-3 text-emerald-400" />
+                              <span>ฟรีค่าจัดส่ง 🎉</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Warning if Out of Range & Blocked */}
+                    {isDeliveryOutOfRange && !settings.allowOutOfRadiusOrder && (
+                      <div className="p-2.5 rounded-lg bg-rose-950/50 border border-rose-500/40 text-xs text-rose-300 flex items-start gap-2">
+                        <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                        <div>
+                          <strong className="block">อยู่นอกเขตรัศมีจัดส่ง:</strong>
+                          <span>
+                            {settings.outOfRadiusMessage ||
+                              `ทางร้านจัดส่งสูงสุดในรัศมี ${settings.deliveryMaxDistanceKm || 15} กม. กรุณาแตะปักหมุดใหม่ หรือเปลี่ยนเป็นสั่งรับกลับที่ร้านครับ`}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Minimum order check */}
+                    {settings.deliveryMinOrderAmount &&
+                      settings.deliveryMinOrderAmount > 0 &&
+                      cartSubtotal < settings.deliveryMinOrderAmount && (
+                        <div className="p-2 rounded-lg bg-amber-950/40 border border-amber-500/40 text-xs text-amber-300 flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                          <span>
+                            ยอดสั่งซื้ออาหารขั้นต่ำสำหรับเดลิเวอรี่คือ <strong>฿{settings.deliveryMinOrderAmount}</strong> (ขาดอีก ฿{settings.deliveryMinOrderAmount - cartSubtotal})
+                          </span>
+                        </div>
+                      )}
+
+                    {/* Quick inputs for building & rider note */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-white/10">
+                      <div>
+                        <label className="text-[10px] text-stone-400 font-bold uppercase flex items-center gap-1 mb-1">
+                          <Building className="w-3 h-3 text-amber-400" />
+                          <span>อาคาร / ชั้น / ห้อง</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={deliveryLocation?.buildingDetails || ''}
+                          onChange={(e) =>
+                            setDeliveryLocation((prev) =>
+                              prev ? { ...prev, buildingDetails: e.target.value } : null
+                            )
+                          }
+                          placeholder="เช่น ชั้น 12 ห้อง 1205"
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-[#0A0A0B] border border-white/10 text-xs text-white placeholder:text-stone-500 focus:outline-none focus:border-[#FF5C00]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] text-stone-400 font-bold uppercase flex items-center gap-1 mb-1">
+                          <FileText className="w-3 h-3 text-emerald-400" />
+                          <span>หมายเหตุถึงไรเดอร์</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={deliveryLocation?.driverNote || ''}
+                          onChange={(e) =>
+                            setDeliveryLocation((prev) =>
+                              prev ? { ...prev, driverNote: e.target.value } : null
+                            )
+                          }
+                          placeholder="เช่น ฝาก รปภ. / โทรเมื่อถึง"
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-[#0A0A0B] border border-white/10 text-xs text-white placeholder:text-stone-500 focus:outline-none focus:border-[#FF5C00]"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -722,6 +862,15 @@ export const CheckoutModal: React.FC = () => {
                 <div className="flex justify-between text-stone-400">
                   <span>Service Charge (10%)</span>
                   <span className="font-mono font-bold text-white">฿{cartServiceCharge.toLocaleString()}</span>
+                </div>
+              )}
+              {cartDeliveryFee > 0 && (
+                <div className="flex justify-between text-stone-400">
+                  <span className="flex items-center gap-1">
+                    <Bike className="w-3 h-3 text-[#FF5C00]" />
+                    <span>ค่าจัดส่งเดลิเวอรี่</span>
+                  </span>
+                  <span className="font-mono font-bold text-white">฿{cartDeliveryFee.toLocaleString()}</span>
                 </div>
               )}
               <div className="flex justify-between items-center pt-2 border-t border-white/10 font-bold text-white">

@@ -43,6 +43,21 @@ interface CustomerInfo {
   notes: string;
 }
 
+// Haversine distance calculator in KM
+export function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c * 10) / 10;
+}
+
 interface RestaurantContextType {
   // Categories
   categories: Category[];
@@ -159,6 +174,9 @@ interface RestaurantContextType {
   cartDeliveryFee: number;
   cartTotal: number;
   cartItemCount: number;
+  deliveryDistanceKm: number;
+  isDeliveryOutOfRange: boolean;
+  isDeliveryFree: boolean;
 
   // View mode
   isAdminMode: boolean;
@@ -1158,10 +1176,46 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       ? Math.round(afterDiscount * settings.serviceChargeRate * 10) / 10
       : 0;
 
-  // Delivery fee (0 since delivery mode is removed)
-  const cartDeliveryFee = 0;
+  // Restaurant GPS Coordinates
+  const restLat = settings.restaurantLat || 13.7367;
+  const restLng = settings.restaurantLng || 100.5831;
 
-  const cartTotal = afterDiscount + cartServiceCharge;
+  // Delivery distance calculation
+  const deliveryDistanceKm = deliveryLocation?.lat && deliveryLocation?.lng
+    ? calculateDistanceKm(restLat, restLng, deliveryLocation.lat, deliveryLocation.lng)
+    : (deliveryLocation?.distanceKm || 0.5);
+
+  // Max delivery radius check
+  const maxDeliveryRadius = settings.deliveryMaxDistanceKm ?? 15;
+  const isDeliveryOutOfRange =
+    orderType === 'delivery' &&
+    maxDeliveryRadius > 0 &&
+    deliveryDistanceKm > maxDeliveryRadius;
+
+  // Delivery Fee Calculation based on settings
+  let cartDeliveryFee = 0;
+  let isDeliveryFree = false;
+
+  if (orderType === 'delivery') {
+    // Check if free delivery minimum order is satisfied
+    if (settings.deliveryFreeMinOrder && settings.deliveryFreeMinOrder > 0 && afterDiscount >= settings.deliveryFreeMinOrder) {
+      cartDeliveryFee = 0;
+      isDeliveryFree = true;
+    } else {
+      const baseFee = settings.deliveryBaseFee ?? 40;
+      const perKmFee = settings.deliveryPerKmFee ?? 10;
+      const freeKm = settings.deliveryFreeKm ?? 3;
+
+      if (deliveryDistanceKm > freeKm && perKmFee > 0) {
+        const extraKm = Math.ceil(deliveryDistanceKm - freeKm);
+        cartDeliveryFee = baseFee + (extraKm * perKmFee);
+      } else {
+        cartDeliveryFee = baseFee;
+      }
+    }
+  }
+
+  const cartTotal = afterDiscount + cartServiceCharge + cartDeliveryFee;
 
   // Create Order or Merge with Existing Table Order
   const createOrder = (paymentMethod: 'promptpay' | 'credit_card' | 'cash', slipImage?: string): Order => {
@@ -1169,6 +1223,26 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (!storeStatus.isOpen) {
       showToast(`ไม่สามารถสั่งอาหารได้ในขณะนี้ เนื่องจากร้านปิดทำการ (${storeStatus.statusText})`, 'warning');
       return null as any;
+    }
+
+    // 0.1 Delivery Constraints Checks
+    if (orderType === 'delivery') {
+      if (settings.deliveryMinOrderAmount && afterDiscount < settings.deliveryMinOrderAmount) {
+        showToast(
+          `ยอดสั่งซื้ออาหารขั้นต่ำสำหรับบริการจัดส่งเดลิเวอรี่คือ ฿${settings.deliveryMinOrderAmount.toLocaleString()} (ยอดปัจจุบัน ฿${afterDiscount.toLocaleString()})`,
+          'warning'
+        );
+        return null as any;
+      }
+
+      if (isDeliveryOutOfRange && !settings.allowOutOfRadiusOrder) {
+        showToast(
+          settings.outOfRadiusMessage ||
+            `ขออภัยครับ พิกัดจัดส่งของคุณห่าง ${deliveryDistanceKm} กม. ซึ่งเกินรัศมีบริการสูงสุด ${maxDeliveryRadius} กม. กรุณาเลือกสั่งแบบรับกลับหน้าร้าน`,
+          'warning'
+        );
+        return null as any;
+      }
     }
 
     // 1. If there is already an active order for this table/customer session, merge into the existing bill!
@@ -1281,7 +1355,9 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       discount: cartDiscount,
       promoCodeApplied: appliedPromo?.code,
       serviceCharge: cartServiceCharge,
-      deliveryFee: 0,
+      deliveryFee: cartDeliveryFee,
+      deliveryAddress: orderType === 'delivery' ? (deliveryAddress || deliveryLocation?.address) : undefined,
+      deliveryLocation: orderType === 'delivery' ? (deliveryLocation || undefined) : undefined,
       total: cartTotal,
       paymentMethod,
       paymentStatus: 'paid',
@@ -1732,6 +1808,9 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         cartDeliveryFee,
         cartTotal,
         cartItemCount,
+        deliveryDistanceKm,
+        isDeliveryOutOfRange,
+        isDeliveryFree,
         isAdminMode,
         setIsAdminMode,
         isAdminAuthModalOpen,

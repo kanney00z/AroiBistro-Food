@@ -1,4 +1,4 @@
-export type OrderType = 'dine_in' | 'pickup';
+export type OrderType = 'dine_in' | 'pickup' | 'delivery';
 
 export type OrderStatus = 'pending' | 'cooking' | 'ready' | 'delivering' | 'completed' | 'cancelled';
 
@@ -192,7 +192,19 @@ export interface RestaurantSettings {
   serviceChargeRate: number; // e.g. 0.10 for 10%
   vatRate: number; // e.g. 0.07 for 7%
   enableServiceCharge: boolean;
-  deliveryBaseFee: number;
+  
+  // Delivery Settings & Radius Configuration
+  restaurantLat?: number; // Store GPS Latitude (e.g. 13.7367)
+  restaurantLng?: number; // Store GPS Longitude (e.g. 100.5831)
+  deliveryBaseFee: number; // Base delivery fee (THB) e.g. 40
+  deliveryMaxDistanceKm?: number; // Max delivery radius in km (e.g. 10, 15, or 0 = unlimited)
+  deliveryPerKmFee?: number; // Fee per km beyond free km (e.g. 10 THB/km)
+  deliveryFreeKm?: number; // Initial distance included in base fee (e.g. 2 km)
+  deliveryFreeMinOrder?: number; // Free delivery threshold (e.g. 600 THB)
+  deliveryMinOrderAmount?: number; // Minimum food order to allow delivery (e.g. 150 THB)
+  allowOutOfRadiusOrder?: boolean; // If true, allows delivery beyond max radius with warning; if false, blocks order
+  outOfRadiusMessage?: string; // Custom warning message for out of range addresses
+
   adminPin?: string; // PIN code to access Admin Backoffice (default "1234")
   heroBanner?: HeroBannerSettings;
   lineNotifyEnabled?: boolean; // Enable/disable LINE notifications

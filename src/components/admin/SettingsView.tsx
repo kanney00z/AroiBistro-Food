@@ -34,6 +34,12 @@ import {
   Eye,
   EyeOff,
   Smartphone,
+  Bike,
+  Compass,
+  LocateFixed,
+  ShieldCheck,
+  Navigation,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { useRestaurant } from '../../context/RestaurantContext';
 import { SpecialHoliday } from '../../types';
@@ -115,6 +121,30 @@ export const SettingsView: React.FC = () => {
     } else {
       showToast(res.message, 'warning');
     }
+  };
+
+  const handleGetStoreLocation = () => {
+    if (!navigator.geolocation) {
+      showToast('เบราว์เซอร์ไม่รองรับ GPS', 'warning');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = Math.round(pos.coords.latitude * 100000) / 100000;
+        const lng = Math.round(pos.coords.longitude * 100000) / 100000;
+        setFormData((prev) => ({
+          ...prev,
+          restaurantLat: lat,
+          restaurantLng: lng,
+        }));
+        showToast(`ระบุพิกัด GPS หน้าร้านสำเร็จ: ${lat}, ${lng} 📍`, 'success');
+      },
+      (err) => {
+        console.warn(err);
+        showToast('ไม่สามารถระบุพิกัด GPS ได้ กรุณากรอกพิกัดด้วยตนเอง', 'warning');
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
   };
 
   const handleSaveAll = (e: React.FormEvent) => {
@@ -1192,6 +1222,499 @@ export const SettingsView: React.FC = () => {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 6: Delivery Radius & Geofence Configuration */}
+        <div className="p-6 rounded-3xl bg-[#111112] border border-white/10 space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                <Bike className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-display font-black text-lg text-white flex items-center gap-2">
+                  <span>6. กำหนดรัศมี & ขอบเขตการจัดส่งเดลิเวอรี่ (Delivery Radius & Geofence)</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                    GPS RADIUS
+                  </span>
+                </h3>
+                <p className="text-xs text-stone-400">
+                  กำหนดพิกัดหน้าร้าน, รัศมีจัดส่งสูงสุด (กม.), อัตราค่าส่งตามระยะทาง และนโยบายเมื่อลูกค้านอกเขต
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            {/* Left Column: GPS & Radius Settings (7 Cols) */}
+            <div className="lg:col-span-7 space-y-6">
+              
+              {/* Store GPS Coordinates Card */}
+              <div className="p-5 rounded-2xl bg-[#0A0A0B] border border-white/10 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold text-amber-400">
+                    <MapPin className="w-4 h-4" />
+                    <span>พิกัด GPS หน้าร้านอาหาร (Store Location)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleGetStoreLocation}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-bold transition-all cursor-pointer"
+                  >
+                    <LocateFixed className="w-3.5 h-3.5" />
+                    <span>ใช้ตำแหน่ง GPS ของร้านตอนนี้</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="label-caps block mb-1 text-stone-300">
+                      ละติจูด (Latitude)
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={formData.restaurantLat ?? 13.7367}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          restaurantLat: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                      className="w-full bg-[#161618] border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-[#FF5C00]"
+                      placeholder="13.73670"
+                    />
+                  </div>
+                  <div>
+                    <label className="label-caps block mb-1 text-stone-300">
+                      ลองจิจูด (Longitude)
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={formData.restaurantLng ?? 100.5831}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          restaurantLng: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                      className="w-full bg-[#161618] border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-[#FF5C00]"
+                      placeholder="100.58310"
+                    />
+                  </div>
+                </div>
+
+                {/* Quick Store Location Presets */}
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-[11px] text-stone-400 font-bold uppercase tracking-wider block">
+                    ⚡ เลือกพิกัดย่านยอดนิยมทันที:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { name: 'สุขุมวิท / ทองหล่อ', lat: 13.7367, lng: 100.5831 },
+                      { name: 'สยามสแควร์', lat: 13.7443, lng: 100.5318 },
+                      { name: 'อารีย์ / พญาไท', lat: 13.7797, lng: 100.5448 },
+                      { name: 'พระราม 9 / รัชดา', lat: 13.7578, lng: 100.5658 },
+                      { name: 'สีลม / สาทร', lat: 13.7246, lng: 100.5332 },
+                      { name: 'เอกมัย / พระโขนง', lat: 13.7208, lng: 100.5855 },
+                      { name: 'ลาดพร้าว / จตุจักร', lat: 13.8122, lng: 100.5615 },
+                      { name: 'บางนา / เมกาบางนา', lat: 13.6468, lng: 100.6800 },
+                      { name: 'เชียงใหม่ (นิมมาน)', lat: 18.7961, lng: 98.9687 },
+                    ].map((preset) => (
+                      <button
+                        key={preset.name}
+                        type="button"
+                        onClick={() => {
+                          setFormData({
+                            ...formData,
+                            restaurantLat: preset.lat,
+                            restaurantLng: preset.lng,
+                          });
+                          showToast(`เปลี่ยนพิกัดร้านเป็น: ${preset.name}`, 'info');
+                        }}
+                        className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                          Math.abs((formData.restaurantLat || 0) - preset.lat) < 0.001 &&
+                          Math.abs((formData.restaurantLng || 0) - preset.lng) < 0.001
+                            ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
+                            : 'bg-[#161618] hover:bg-white/5 border-white/10 text-stone-300'
+                        }`}
+                      >
+                        📍 {preset.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Maximum Delivery Radius Card */}
+              <div className="p-5 rounded-2xl bg-[#0A0A0B] border border-white/10 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold text-amber-400">
+                    <Compass className="w-4 h-4" />
+                    <span>กำหนดรัศมีจัดส่งสูงสุดรอบร้าน (Max Delivery Radius)</span>
+                  </div>
+                  <span className="text-xs font-black font-mono px-2.5 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    {(formData.deliveryMaxDistanceKm || 0) > 0
+                      ? `${formData.deliveryMaxDistanceKm} กิโลเมตร`
+                      : 'ไม่จำกัดระยะทาง'}
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Slider Control */}
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="range"
+                      min="1"
+                      max="50"
+                      step="1"
+                      value={formData.deliveryMaxDistanceKm ?? 15}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          deliveryMaxDistanceKm: parseInt(e.target.value) || 1,
+                        })
+                      }
+                      className="flex-1 accent-[#FF5C00] h-2 bg-[#161618] rounded-lg cursor-pointer"
+                    />
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={formData.deliveryMaxDistanceKm ?? 15}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            deliveryMaxDistanceKm: parseInt(e.target.value) || 0,
+                          })
+                        }
+                        className="w-16 bg-[#161618] border border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-white font-mono text-center focus:outline-none focus:border-[#FF5C00]"
+                      />
+                      <span className="text-xs text-stone-400 font-bold">กม.</span>
+                    </div>
+                  </div>
+
+                  {/* Preset Radius Buttons */}
+                  <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+                    {[3, 5, 8, 10, 15, 20, 30].map((km) => (
+                      <button
+                        key={km}
+                        type="button"
+                        onClick={() =>
+                          setFormData({
+                            ...formData,
+                            deliveryMaxDistanceKm: km,
+                          })
+                        }
+                        className={`py-1.5 rounded-xl border text-xs font-mono font-bold transition-all cursor-pointer ${
+                          formData.deliveryMaxDistanceKm === km
+                            ? 'bg-[#FF5C00] border-[#FF5C00] text-white shadow-md shadow-[#FF5C00]/30'
+                            : 'bg-[#161618] hover:bg-white/5 border-white/10 text-stone-300'
+                        }`}
+                      >
+                        {km} กม.
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Delivery Pricing Structure Card */}
+              <div className="p-5 rounded-2xl bg-[#0A0A0B] border border-white/10 space-y-4">
+                <div className="flex items-center gap-2 text-xs font-bold text-amber-400">
+                  <DollarSign className="w-4 h-4" />
+                  <span>โครงสร้างอัตราค่าจัดส่ง (Delivery Fee Rules)</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="label-caps block mb-1 text-stone-300">
+                      ค่าส่งเริ่มต้น (Base Fee)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        value={formData.deliveryBaseFee ?? 40}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            deliveryBaseFee: parseInt(e.target.value) || 0,
+                          })
+                        }
+                        className="w-full bg-[#161618] border border-white/10 rounded-xl pl-3 pr-8 py-2 text-xs text-white font-mono focus:outline-none focus:border-[#FF5C00]"
+                      />
+                      <span className="absolute right-3 top-2 text-xs text-stone-400">฿</span>
+                    </div>
+                    <span className="text-[10px] text-stone-500 mt-1 block">ค่าบริการส่งเริ่มต้น</span>
+                  </div>
+
+                  <div>
+                    <label className="label-caps block mb-1 text-stone-300">
+                      ระยะทางฟรีในค่าส่งแรก
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={formData.deliveryFreeKm ?? 3}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            deliveryFreeKm: parseFloat(e.target.value) || 0,
+                          })
+                        }
+                        className="w-full bg-[#161618] border border-white/10 rounded-xl pl-3 pr-9 py-2 text-xs text-white font-mono focus:outline-none focus:border-[#FF5C00]"
+                      />
+                      <span className="absolute right-2.5 top-2 text-xs text-stone-400">กม.</span>
+                    </div>
+                    <span className="text-[10px] text-stone-500 mt-1 block">ไม่คิดเพิ่มในช่วงนี้</span>
+                  </div>
+
+                  <div>
+                    <label className="label-caps block mb-1 text-stone-300">
+                      คิดเพิ่มต่อ กม. ถัดไป
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        value={formData.deliveryPerKmFee ?? 10}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            deliveryPerKmFee: parseInt(e.target.value) || 0,
+                          })
+                        }
+                        className="w-full bg-[#161618] border border-white/10 rounded-xl pl-3 pr-11 py-2 text-xs text-white font-mono focus:outline-none focus:border-[#FF5C00]"
+                      />
+                      <span className="absolute right-2.5 top-2 text-[11px] text-stone-400">฿/กม.</span>
+                    </div>
+                    <span className="text-[10px] text-stone-500 mt-1 block">เมื่อเกินระยะเริ่มต้น</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-white/5">
+                  <div>
+                    <label className="label-caps block mb-1 text-emerald-400">
+                      ส่งฟรีเมื่อสั่งครบ (Free Delivery Threshold)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        value={formData.deliveryFreeMinOrder ?? 800}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            deliveryFreeMinOrder: parseInt(e.target.value) || 0,
+                          })
+                        }
+                        className="w-full bg-[#161618] border border-emerald-500/30 rounded-xl pl-3 pr-8 py-2 text-xs text-emerald-300 font-mono focus:outline-none focus:border-emerald-500"
+                        placeholder="800"
+                      />
+                      <span className="absolute right-3 top-2 text-xs text-emerald-400">฿</span>
+                    </div>
+                    <span className="text-[10px] text-stone-500 mt-1 block">ใส่ 0 หากไม่มีโปรส่งฟรี</span>
+                  </div>
+
+                  <div>
+                    <label className="label-caps block mb-1 text-stone-300">
+                      ยอดสั่งซื้อขั้นต่ำเดลิเวอรี่ (Minimum Order)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        value={formData.deliveryMinOrderAmount ?? 100}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            deliveryMinOrderAmount: parseInt(e.target.value) || 0,
+                          })
+                        }
+                        className="w-full bg-[#161618] border border-white/10 rounded-xl pl-3 pr-8 py-2 text-xs text-white font-mono focus:outline-none focus:border-[#FF5C00]"
+                        placeholder="100"
+                      />
+                      <span className="absolute right-3 top-2 text-xs text-stone-400">฿</span>
+                    </div>
+                    <span className="text-[10px] text-stone-500 mt-1 block">ยอดขั้นต่ำในการเปิดบิลส่ง</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Out of Radius Policy Card */}
+              <div className="p-5 rounded-2xl bg-[#0A0A0B] border border-white/10 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 text-xs font-bold text-amber-400">
+                      <ShieldAlert className="w-4 h-4" />
+                      <span>นโยบายเมื่ออยู่นอกเขตรัศมีจัดส่ง (Out of Radius Policy)</span>
+                    </div>
+                    <p className="text-[11px] text-stone-400 mt-0.5">
+                      เลือกการจัดการเมื่อลูกค้าปักหมุดเกิน {formData.deliveryMaxDistanceKm || 15} กิโลเมตร
+                    </p>
+                  </div>
+
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.allowOutOfRadiusOrder || false}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          allowOutOfRadiusOrder: e.target.checked,
+                        })
+                      }
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-stone-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                  </label>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#161618] border border-white/10 text-xs">
+                  {formData.allowOutOfRadiusOrder ? (
+                    <div className="text-amber-300 flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <span>
+                        <strong>เปิดอนุญาตให้สั่งได้:</strong> ลูกค้าที่อยู่นอกเขตรัศมีจะยังสามารถสั่งได้ โดยระบบจะคิดค่าส่งตามระยะทางจริง
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-rose-300 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                      <span>
+                        <strong>บล็อคไม่ให้สั่งเดลิเวอรี่ (แนะนำ):</strong> ป้องกันไม่ให้ลูกค้ากดสั่งอาหารหากพิกัดเกิน {formData.deliveryMaxDistanceKm || 15} กม. เพื่อรักษาคุณภาพความสดใหม่ของอาหาร
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="label-caps block mb-1 text-stone-300">
+                    ข้อความแจ้งเตือนเมื่ออยู่นอกพื้นที่จัดส่ง
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.outOfRadiusMessage || ''}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        outOfRadiusMessage: e.target.value,
+                      })
+                    }
+                    placeholder="ขออภัยครับ ตำแหน่งจัดส่งอยู่นอกเขตพื้นที่บริการ กรุณาเลือกสั่งแบบรับกลับหน้าร้านครับ"
+                    className="w-full bg-[#161618] border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#FF5C00]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Live Interactive Calculator & Visual Geofence Summary (5 Cols) */}
+            <div className="lg:col-span-5 space-y-4">
+              
+              {/* Live Geofence Summary Card */}
+              <div className="p-5 rounded-2xl bg-[#0A0A0B] border border-amber-500/20 space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5 uppercase tracking-wider">
+                    <SlidersHorizontal className="w-4 h-4" />
+                    ตารางจำลองค่าส่งตามระยะทางจริง
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 font-bold border border-amber-500/20">
+                    LIVE PREVIEW
+                  </span>
+                </div>
+
+                {/* Distance Tier Simulation Rows */}
+                <div className="space-y-2">
+                  {[
+                    { distance: 1, label: 'ใกล้ร้าน (1.0 กม.)' },
+                    { distance: 3, label: 'ภายในระยะเริ่มต้น (3.0 กม.)' },
+                    { distance: 5, label: 'ระยะปานกลาง (5.0 กม.)' },
+                    { distance: 8, label: 'ระยะ 8.0 กม.' },
+                    { distance: 12, label: 'ระยะ 12.0 กม.' },
+                    { distance: 16, label: 'ระยะ 16.0 กม.' },
+                    { distance: 22, label: 'ระยะ 22.0 กม.' },
+                  ].map((tier) => {
+                    const maxDist = formData.deliveryMaxDistanceKm || 15;
+                    const isOutOfRadius = maxDist > 0 && tier.distance > maxDist;
+                    const baseFee = formData.deliveryBaseFee ?? 40;
+                    const freeKm = formData.deliveryFreeKm ?? 3;
+                    const perKm = formData.deliveryPerKmFee ?? 10;
+                    
+                    let calcFee = baseFee;
+                    if (tier.distance > freeKm && perKm > 0) {
+                      calcFee = baseFee + Math.ceil(tier.distance - freeKm) * perKm;
+                    }
+
+                    return (
+                      <div
+                        key={tier.distance}
+                        className={`p-2.5 rounded-xl border flex items-center justify-between text-xs transition-all ${
+                          isOutOfRadius
+                            ? 'bg-rose-950/20 border-rose-500/30 opacity-75'
+                            : 'bg-[#161618] border-white/10'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-lg bg-white/5 text-stone-300 flex items-center justify-center text-[10px] font-mono font-bold">
+                            {tier.distance}
+                          </span>
+                          <span className="text-stone-300">{tier.label}</span>
+                        </div>
+
+                        <div>
+                          {isOutOfRadius ? (
+                            <span className="text-[11px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
+                              {formData.allowOutOfRadiusOrder ? `฿${calcFee} (นอกเขต)` : '🚫 นอกเขตจัดส่ง'}
+                            </span>
+                          ) : (
+                            <span className="font-mono font-black text-white">
+                              ฿{calcFee}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Free Delivery Benefit Banner */}
+                {(formData.deliveryFreeMinOrder || 0) > 0 && (
+                  <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 text-emerald-300">
+                      <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>
+                        สั่งครบ <strong>฿{formData.deliveryFreeMinOrder}</strong>
+                      </span>
+                    </div>
+                    <span className="font-bold text-emerald-400 bg-emerald-500/20 px-2.5 py-0.5 rounded-md border border-emerald-500/30">
+                      ฟรีค่าจัดส่ง 🎉
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Geofence Delivery Policy Explanation Note */}
+              <div className="p-4 rounded-2xl bg-[#0A0A0B] border border-white/10 space-y-2 text-xs text-stone-400 leading-relaxed">
+                <div className="flex items-center gap-1.5 text-stone-200 font-bold">
+                  <Info className="w-4 h-4 text-[#FF5C00]" />
+                  <span>คำแนะนำการตั้งค่ารัศมี:</span>
+                </div>
+                <p>
+                  • <strong>รัศมี 5 - 10 กม.</strong> เหมาะสำหรับร้านอาหารปรุงสด เพื่อให้ไรเดอร์ไปส่งถึงมือลูกค้าภายใน 20-30 นาที และอาหารยังคงความร้อนหอมอร่อย
+                </p>
+                <p>
+                  • ลูกค้าสามารถปักหมุด GPS บนแผนที่ หรือใช้ปุ่มระบุตำแหน่งปัจจุบัน ระบบจะวัดระยะทางแบบเส้นตรงจริงและคำนวณค่าส่งให้อัตโนมัติ
+                </p>
+              </div>
+
             </div>
           </div>
         </div>

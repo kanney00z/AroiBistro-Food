@@ -10,6 +10,10 @@ import {
   ArrowRight,
   UtensilsCrossed,
   Package,
+  Bike,
+  MapPin,
+  Compass,
+  Building,
   Sparkles,
   ChefHat,
   Ban,
@@ -38,6 +42,8 @@ export const CartDrawer: React.FC = () => {
     selectTableManually,
     clearScannedTable,
     setIsTableScannerModalOpen,
+    deliveryLocation,
+    setIsMapPickerOpen,
     showToast,
     activeTableOrder,
     isAddingToExistingOrder,
@@ -146,10 +152,11 @@ export const CartDrawer: React.FC = () => {
             <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 sm:space-y-6 custom-scrollbar">
               
               {/* Order Mode Pill Selector in Cart */}
-              <div className="bg-[#0A0A0B] p-1.5 rounded-2xl border border-white/10 flex items-center justify-between">
+              <div className="bg-[#0A0A0B] p-1.5 rounded-2xl border border-white/10 flex items-center justify-between gap-1">
                 {[
                   { type: 'dine_in', label: 'ทานที่ร้าน', icon: UtensilsCrossed },
                   { type: 'pickup', label: 'รับกลับ', icon: Package },
+                  { type: 'delivery', label: 'เดลิเวอรี่', icon: Bike },
                 ].map((m) => {
                   const Icon = m.icon;
                   const active = orderType === m.type;
@@ -283,6 +290,51 @@ export const CartDrawer: React.FC = () => {
                   <p className="text-xs text-stone-400 leading-relaxed">
                     อาหารจะถูกจัดเตรียมใส่กล่องพร้อมให้เข้ามารับที่เคาน์เตอร์หน้าร้าน สามารถกดสั่งและชำระเงินได้ทันที
                   </p>
+                </div>
+              )}
+
+              {orderType === 'delivery' && (
+                <div className="p-4 rounded-2xl bg-[#161618] border border-white/10 space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-stone-200">
+                      <Bike className="w-4 h-4 text-[#FF5C00]" />
+                      <span className="label-caps">จัดส่งเดลิเวอรี่ (Delivery)</span>
+                    </div>
+                    <span className="text-[11px] font-bold text-[#FF5C00] bg-[#FF5C00]/10 px-2 py-0.5 rounded-full border border-[#FF5C00]/20">
+                      🛵 ปักหมุดแผนที่ GPS
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-[#0A0A0B] border border-white/10 space-y-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2 min-w-0">
+                        <MapPin className="w-4 h-4 text-[#FF5C00] shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-white leading-tight line-clamp-2">
+                            {deliveryLocation?.address || 'ยังไม่ได้ปักหมุดตำแหน่ง'}
+                          </div>
+                          {deliveryLocation?.buildingDetails && (
+                            <div className="text-[11px] text-stone-400 mt-0.5 flex items-center gap-1">
+                              <Building className="w-3 h-3 text-amber-400 shrink-0" />
+                              <span className="truncate">{deliveryLocation.buildingDetails}</span>
+                            </div>
+                          )}
+                          <div className="text-[10px] text-stone-500 font-mono mt-1">
+                            ระยะทาง ~{deliveryLocation?.distanceKm || 0.5} กม. | พิกัด {deliveryLocation?.lat.toFixed(4)}, {deliveryLocation?.lng.toFixed(4)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        id="btn-cart-open-map-picker"
+                        onClick={() => setIsMapPickerOpen(true)}
+                        className="px-3 py-1.5 rounded-xl bg-[#FF5C00] hover:bg-[#FF7729] text-white text-xs font-bold shadow-md shadow-[#FF5C00]/25 transition-all cursor-pointer shrink-0"
+                      >
+                        {deliveryLocation ? 'เปลี่ยนหมุด' : 'ปักหมุด'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 

@@ -30,6 +30,8 @@ export const Navbar: React.FC<NavbarProps> = ({ searchQuery, setSearchQuery }) =
     selectedTable,
     isTableScanned,
     setIsTableScannerModalOpen,
+    deliveryLocation,
+    setIsMapPickerOpen,
     cartItemCount,
     setIsCartDrawerOpen,
     setIsAdminAuthModalOpen,
@@ -39,7 +41,8 @@ export const Navbar: React.FC<NavbarProps> = ({ searchQuery, setSearchQuery }) =
 
   const diningModes: { type: OrderType; label: string; icon: React.ElementType }[] = [
     { type: 'dine_in', label: 'ทานที่ร้าน', icon: UtensilsCrossed },
-    { type: 'pickup', label: 'รับกลับบ้าน', icon: Package },
+    { type: 'pickup', label: 'รับกลับ', icon: Package },
+    { type: 'delivery', label: 'เดลิเวอรี่', icon: Bike },
   ];
 
   return (
@@ -145,6 +148,21 @@ export const Navbar: React.FC<NavbarProps> = ({ searchQuery, setSearchQuery }) =
             </div>
           )}
 
+          {orderType === 'delivery' && (
+            <div className="hidden md:block">
+              <button
+                type="button"
+                id="btn-nav-delivery-pin"
+                onClick={() => setIsMapPickerOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FF5C00]/15 hover:bg-[#FF5C00]/25 border border-[#FF5C00]/40 text-xs text-[#FF7729] font-bold transition-all cursor-pointer shadow-sm max-w-[220px]"
+                title="คลิกเพื่อปักหมุดตำแหน่งจัดส่งบนแผนที่ GPS"
+              >
+                <MapPin className="w-3.5 h-3.5 text-[#FF5C00] animate-bounce shrink-0" />
+                <span className="truncate">{deliveryLocation?.address || '📍 ปักหมุดที่อยู่ส่ง'}</span>
+              </button>
+            </div>
+          )}
+
           {/* Right Action Icons & Buttons */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             
@@ -244,6 +262,19 @@ export const Navbar: React.FC<NavbarProps> = ({ searchQuery, setSearchQuery }) =
             >
               <UtensilsCrossed className={`w-3.5 h-3.5 ${selectedTable ? 'text-emerald-400' : 'text-[#FF5C00]'}`} />
               <span className="font-mono">{selectedTable ? `โต๊ะ ${selectedTable}` : 'ระบุโต๊ะ'}</span>
+            </button>
+          )}
+
+          {/* Delivery Pin Button on Mobile (Only when delivery) */}
+          {orderType === 'delivery' && (
+            <button
+              type="button"
+              id="mobile-btn-delivery-picker"
+              onClick={() => setIsMapPickerOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border border-[#FF5C00]/40 bg-[#FF5C00]/15 text-[#FF7729] hover:bg-[#FF5C00]/25 transition-all cursor-pointer shrink-0 max-w-[140px]"
+            >
+              <MapPin className="w-3.5 h-3.5 text-[#FF5C00] shrink-0" />
+              <span className="truncate">{deliveryLocation?.address ? '📍 พิกัดแล้ว' : 'ปักหมุด'}</span>
             </button>
           )}
         </div>
