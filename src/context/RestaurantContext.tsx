@@ -15,6 +15,7 @@ import {
   Category,
   DeliveryLocation,
   HeroBannerSettings,
+  PaymentMethod,
 } from '../types';
 import {
   INITIAL_MENU_ITEMS,
@@ -142,6 +143,7 @@ interface RestaurantContextType {
     notes?: string;
   }) => void;
   updateOrderItemPrice: (orderId: string, cartItemId: string, newUnitPrice: number) => void;
+  submitOrderPayment: (orderId: string, paymentMethod: PaymentMethod, slipImage?: string) => void;
   updateCartItemQuantity: (cartItemId: string, delta: number) => void;
   updateCartItemPackagingType: (cartItemId: string, packagingType: 'dine_in' | 'takeaway') => void;
   removeFromCart: (cartItemId: string) => void;
@@ -1022,6 +1024,8 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const updateOrderItemPrice = (orderId: string, cartItemId: string, newUnitPrice: number) => {
+    let orderToBroadcast: Order | undefined;
+
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id !== orderId) return ord;
@@ -1072,6 +1076,8 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           updatedAt: new Date().toISOString(),
         };
 
+        orderToBroadcast = updatedOrder;
+
         if (activeCustomerOrder?.id === orderId) {
           setActiveCustomerOrder(updatedOrder);
         }
@@ -1080,7 +1086,63 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       })
     );
 
+    if (orderToBroadcast) {
+      realtimeManager.persistOrder(orderToBroadcast);
+      realtimeManager.broadcast('ORDER_UPDATED', { order: orderToBroadcast });
+    }
+
     showToast(`อัปเดตราคาเมนูเป็น ฿${newUnitPrice.toLocaleString()} เรียบร้อยแล้ว`, 'success');
+  };
+
+  const submitOrderPayment = (
+    orderId: string,
+    paymentMethod: PaymentMethod,
+    slipImage?: string
+  ) => {
+    let updatedOrderObj: Order | undefined;
+
+    setOrders((prev) =>
+      prev.map((ord) => {
+        if (ord.id !== orderId) return ord;
+
+        const updatedOrder: Order = {
+          ...ord,
+          paymentMethod,
+          paymentStatus: 'paid',
+          slipImage: slipImage || ord.slipImage,
+          orderStatus: ord.orderStatus === 'pending' ? 'cooking' : ord.orderStatus,
+          updatedAt: new Date().toISOString(),
+        };
+
+        updatedOrderObj = updatedOrder;
+        if (activeCustomerOrder?.id === orderId) {
+          setActiveCustomerOrder(updatedOrder);
+        }
+
+        return updatedOrder;
+      })
+    );
+
+    if (updatedOrderObj) {
+      realtimeManager.persistOrder(updatedOrderObj);
+      realtimeManager.broadcast('ORDER_UPDATED', { order: updatedOrderObj });
+      audioChime.playNewOrderBell();
+
+      if (settings.lineNotifyEnabled !== false) {
+        sendOrderLineNotification(updatedOrderObj, settings, false).catch((err) => {
+          console.warn('LINE notification payment submit failed:', err);
+        });
+      }
+
+      const methodLabel =
+        paymentMethod === 'cash'
+          ? 'เงินสด / ปลายทาง'
+          : paymentMethod === 'credit_card'
+          ? 'บัตรเครดิต'
+          : 'พร้อมเพย์ QR';
+
+      showToast(`ยืนยันการชำระเงิน (${methodLabel}) ออเดอร์ #${updatedOrderObj.orderNumber} สำเร็จ! เชฟกำลังเริ่มปรุงอาหารครับ 🍳`, 'success');
+    }
   };
 
   const updateCartItemQuantity = (cartItemId: string, delta: number) => {
@@ -1343,6 +1405,10 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       ? (selectedTable || 'เคาน์เตอร์ / สั่งทานที่ร้าน')
       : undefined;
 
+    const hasPendingCustomPrice = newOrderItems.some(
+      (it) => it.customDishDetails?.isPricePending || (it.customDishDetails?.isCustomDish && it.itemTotal === 0)
+    );
+
     const newOrder: Order = {
       id: `ord_${Date.now()}`,
       orderNumber,
@@ -1360,7 +1426,7 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       deliveryLocation: orderType === 'delivery' ? (deliveryLocation || undefined) : undefined,
       total: cartTotal,
       paymentMethod,
-      paymentStatus: 'paid',
+      paymentStatus: hasPendingCustomPrice ? 'pending' : (paymentMethod === 'cash' && orderType === 'delivery' ? 'pending' : 'paid'),
       orderStatus: 'pending',
       slipImage,
       roundsCount: 1,
@@ -1404,7 +1470,11 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setIsCheckoutModalOpen(false);
     setIsCartDrawerOpen(false);
     setIsOrderTrackerOpen(true);
-    showToast(`ส่งออเดอร์ #${orderNumber} เข้าครัวเรียบร้อยแล้ว!`, 'success');
+    if (hasPendingCustomPrice) {
+      showToast(`ส่งออเดอร์ #${orderNumber} ให้ทางร้านประเมินราคาเรียบร้อยแล้ว กรุณารอสักครู่ครับ ⏳`, 'info');
+    } else {
+      showToast(`ส่งออเดอร์ #${orderNumber} เข้าครัวเรียบร้อยแล้ว! 🍳`, 'success');
+    }
 
     return newOrder;
   };
@@ -1778,6 +1848,7 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         addToCart,
         addCustomDishToCart,
         updateOrderItemPrice,
+        submitOrderPayment,
         updateCartItemQuantity,
         updateCartItemPackagingType,
         removeFromCart,

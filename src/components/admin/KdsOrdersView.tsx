@@ -26,6 +26,7 @@ import {
   Compass,
   ExternalLink,
   Image as ImageIcon,
+  Sparkles,
 } from 'lucide-react';
 import { useRestaurant } from '../../context/RestaurantContext';
 import { Order, OrderStatus, OrderType } from '../../types';
@@ -161,6 +162,29 @@ export const KdsOrdersView: React.FC = () => {
               )}
             </div>
           </div>
+
+          {/* Pending Custom Price Notice for Kitchen */}
+          {order.items.some((i) => i.customDishDetails?.isPricePending || (i.customDishDetails?.isCustomDish && i.itemTotal === 0)) ? (
+            <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 mb-2 flex items-center justify-between gap-2 text-xs text-amber-300">
+              <div className="flex items-center gap-1.5 font-bold">
+                <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>มีเมนูสั่งทำพิเศษ: กรุณากด "ใส่ราคา"</span>
+              </div>
+              <span className="text-[10px] bg-amber-500/30 text-amber-200 px-2 py-0.5 rounded-full font-mono font-bold shrink-0">
+                รอประเมินราคา
+              </span>
+            </div>
+          ) : order.paymentStatus === 'pending' ? (
+            <div className="p-2 rounded-xl bg-sky-500/15 border border-sky-500/30 mb-2 flex items-center justify-between gap-2 text-xs text-sky-300 font-bold">
+              <div className="flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-sky-400" />
+                <span>ประเมินราคาแล้ว: รอลูกค้าชำระเงิน</span>
+              </div>
+              <span className="text-[10px] font-mono text-sky-200 bg-sky-500/20 px-1.5 py-0.5 rounded">
+                ฿{order.total.toLocaleString()}
+              </span>
+            </div>
+          ) : null}
 
           {/* Delivery address & Pin coordinates if delivery */}
           {(order.deliveryLocation || order.deliveryAddress) && (

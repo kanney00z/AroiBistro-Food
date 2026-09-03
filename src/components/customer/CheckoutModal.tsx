@@ -80,6 +80,10 @@ export const CheckoutModal: React.FC = () => {
   const [isCopiedPromptPay, setIsCopiedPromptPay] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const hasPendingCustomDish = cart.some(
+    (ci) => ci.customDishDetails?.isPricePending || (ci.customDishDetails?.isCustomDish && ci.itemTotal === 0)
+  );
+
   // Generate real EMVCo PromptPay QR Code
   useEffect(() => {
     if (!isCheckoutModalOpen || paymentMethod !== 'promptpay') return;
@@ -320,6 +324,24 @@ export const CheckoutModal: React.FC = () => {
                   </h4>
                   <p className="text-stone-300 leading-relaxed">
                     ระบบจะเพิ่ม {cart.length} รายการนี้เข้าสู่บิลเดิมและส่งเข้าครัวเพื่อเริ่มปรุงรอบที่ {(activeTableOrder.roundsCount || 1) + 1}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Custom Dish Waiting for Quote Notice */}
+            {hasPendingCustomDish && (
+              <div className="p-4 rounded-2xl bg-amber-500/15 border border-amber-500/40 flex items-start gap-3.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div className="space-y-1 text-xs">
+                  <h4 className="font-bold text-amber-300 text-sm flex items-center gap-1.5">
+                    <span>ออเดอร์นี้มีเมนูพิเศษตามใจคุณ</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/30 text-amber-200 font-mono font-bold">รอประเมินราคา</span>
+                  </h4>
+                  <p className="text-stone-300 leading-relaxed">
+                    เชฟจะตรวจสอบวัตถุดิบและประเมินราคาอาหารให้ก่อน จากนั้นระบบจะแจ้งยอดชำระสุทธิเพื่อให้คุณกดเลือกช่องทางการชำระเงิน (พร้อมเพย์ / บัตร / เงินสด) ในหน้าติดตามออเดอร์ครับ
                   </p>
                 </div>
               </div>
@@ -583,12 +605,49 @@ export const CheckoutModal: React.FC = () => {
             </div>
 
             {/* Payment Method Selector */}
-            <div className="space-y-3 pt-3 border-t border-white/10">
-              <h4 className="label-caps">
-                ช่องทางการชำระเงิน
-              </h4>
+            {hasPendingCustomDish ? (
+              <div className="space-y-3 pt-3 border-t border-white/10">
+                <h4 className="label-caps flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5 text-amber-400" />
+                  <span>ขั้นตอนการชำระเงิน</span>
+                </h4>
+                <div className="p-4 sm:p-5 rounded-2xl bg-[#0A0A0B] border border-amber-500/30 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                      <Clock className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-1 text-xs">
+                      <h5 className="font-bold text-amber-300 text-sm">
+                        เลือกช่องทางชำระเงินหลังจากร้านประเมินราคา
+                      </h5>
+                      <p className="text-stone-400 leading-relaxed">
+                        เมื่อคุณกดยืนยันส่งออเดอร์ด้านล่าง เชฟจะตรวจสอบวัตถุดิบและประเมินราคาทันที จากนั้นคุณสามารถเลือกชำระผ่าน <strong>พร้อมเพย์ QR Code</strong>, <strong>บัตรเครดิต</strong> หรือ <strong>ชำระเงินสด / ปลายทาง</strong> ได้ทันทีในหน้าติดตามออเดอร์ครับ
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-white/5 text-stone-400 text-[11px] text-center">
+                    <div className="p-2.5 rounded-xl bg-white/5 flex flex-col items-center gap-1">
+                      <QrCode className="w-4 h-4 text-stone-400" />
+                      <span className="font-bold text-stone-300">พร้อมเพย์ QR</span>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white/5 flex flex-col items-center gap-1">
+                      <CreditCard className="w-4 h-4 text-stone-400" />
+                      <span className="font-bold text-stone-300">บัตรเครดิต</span>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white/5 flex flex-col items-center gap-1">
+                      <Banknote className="w-4 h-4 text-stone-400" />
+                      <span className="font-bold text-stone-300">เงินสด / ปลายทาง</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3 pt-3 border-t border-white/10">
+                <h4 className="label-caps">
+                  ช่องทางการชำระเงิน
+                </h4>
 
-              <div className="grid grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-3 gap-2.5">
                 {[
                   { id: 'promptpay', name: 'พร้อมเพย์ QR', desc: 'สแกนจ่ายทันที', icon: QrCode },
                   { id: 'credit_card', name: 'บัตรเครดิต', desc: 'Visa / Master', icon: CreditCard },
@@ -845,6 +904,7 @@ export const CheckoutModal: React.FC = () => {
                 </motion.div>
               )}
             </div>
+            )}
 
             {/* Order Final Summary */}
             <div className="p-4 rounded-2xl bg-[#0A0A0B] border border-white/10 space-y-2 text-xs">
@@ -904,12 +964,22 @@ export const CheckoutModal: React.FC = () => {
                 {isProcessing ? (
                   <div className="flex items-center gap-2">
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>กำลังส่งออเดอร์เข้าครัว...</span>
+                    <span>
+                      {hasPendingCustomDish
+                        ? 'กำลังส่งออเดอร์ให้ร้านประเมินราคา...'
+                        : 'กำลังส่งออเดอร์เข้าครัว...'}
+                    </span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 shrink-0" />
-                    <span className="truncate">ยืนยันการสั่งอาหาร (฿{cartTotal.toLocaleString()})</span>
+                    <span className="truncate">
+                      {hasPendingCustomDish
+                        ? (orderType === 'delivery'
+                            ? 'ส่งข้อมูลจัดส่ง & รอร้านประเมินราคา 🛵'
+                            : 'ส่งออเดอร์ให้ร้านประเมินราคา ⏳')
+                        : `ยืนยันการสั่งอาหาร (฿${cartTotal.toLocaleString()})`}
+                    </span>
                     <ArrowRight className="w-4 h-4 shrink-0" />
                   </div>
                 )}

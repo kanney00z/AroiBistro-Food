@@ -640,6 +640,18 @@ export const CartDrawer: React.FC = () => {
               <div className="p-4 sm:p-6 bg-[#0A0A0B] border-t border-white/10 space-y-3">
                 {/* Cost Breakdown */}
                 <div className="space-y-1.5 text-xs text-stone-300">
+                  {cart.some((ci) => ci.customDishDetails?.isPricePending || (ci.customDishDetails?.isCustomDish && ci.itemTotal === 0)) && (
+                    <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-between text-xs text-amber-300 mb-2">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>มีเมนูสั่งทำตามใจ รอร้านประเมินราคา</span>
+                      </div>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 font-black shrink-0">
+                        ⏳ คิดราคาหลังบ้าน
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex justify-between">
                     <span>ยอดรวมอาหาร (Subtotal)</span>
                     <span className="font-mono font-bold text-white">฿{cartSubtotal.toLocaleString()}</span>
@@ -691,9 +703,13 @@ export const CartDrawer: React.FC = () => {
                   >
                     <Sparkles className="w-4 h-4" />
                     <span>
-                      {isAddingToExistingOrder && activeTableOrder
-                        ? `ยืนยันสั่งเพิ่มเข้าบิลเดิม #${activeTableOrder.orderNumber} (+฿${cartTotal.toLocaleString()})`
-                        : `ดำเนินการสั่งและชำระเงิน (฿${cartTotal.toLocaleString()})`}
+                      {cart.some((ci) => ci.customDishDetails?.isPricePending || (ci.customDishDetails?.isCustomDish && ci.itemTotal === 0))
+                        ? (orderType === 'delivery'
+                            ? 'ระบุที่อยู่จัดส่ง & ส่งให้ร้านประเมินราคา 🛵'
+                            : 'ส่งออเดอร์ให้ร้านประเมินราคา ⏳')
+                        : (isAddingToExistingOrder && activeTableOrder
+                            ? `ยืนยันสั่งเพิ่มเข้าบิลเดิม #${activeTableOrder.orderNumber} (+฿${cartTotal.toLocaleString()})`
+                            : `ดำเนินการสั่งและชำระเงิน (฿${cartTotal.toLocaleString()})`)}
                     </span>
                     <ArrowRight className="w-4 h-4" />
                   </motion.button>

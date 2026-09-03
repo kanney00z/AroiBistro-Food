@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import confetti from 'canvas-confetti';
 import {
   X,
   Clock,
@@ -20,9 +21,20 @@ import {
   Compass,
   Image as ImageIcon,
   ZoomIn,
+  QrCode,
+  CreditCard,
+  Banknote,
+  Upload,
+  Copy,
+  Download,
+  Eye,
+  AlertTriangle,
+  ArrowRight,
 } from 'lucide-react';
 import { useRestaurant } from '../../context/RestaurantContext';
-import { OrderStatus } from '../../types';
+import { OrderStatus, PaymentMethod } from '../../types';
+import { compressImageFile } from '../../utils/imageCompressor';
+import { generatePromptPayQrDataUrl } from '../../utils/promptpay';
 
 export const OrderTrackerModal: React.FC = () => {
   const {
@@ -33,12 +45,174 @@ export const OrderTrackerModal: React.FC = () => {
     clearTableBill,
     showToast,
     orders,
+    submitOrderPayment,
+    settings,
   } = useRestaurant();
 
   const [isViewingSlip, setIsViewingSlip] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('promptpay');
+  const [slipImage, setSlipImage] = useState<string | null>(null);
+  const [slipFileName, setSlipFileName] = useState('');
+  const [isCopiedPromptPay, setIsCopiedPromptPay] = useState(false);
+  const [isGeneratingQr, setIsGeneratingQr] = useState(false);
+  const [promptPayQrUrl, setPromptPayQrUrl] = useState<string>('');
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Pick up-to-date order object from orders array
   const currentOrder = orders.find((o) => o.id === activeCustomerOrder?.id) || activeCustomerOrder;
+
+  const hasPendingCustomPrice = Boolean(
+    currentOrder?.items.some(
+      (i) => i.customDishDetails?.isPricePending || (i.customDishDetails?.isCustomDish && i.itemTotal === 0)
+    )
+  );
+
+  const isPaymentPending = currentOrder?.paymentStatus === 'pending';
+
+  // Generate PromptPay QR if payment is pending and priced
+  useEffect(() => {
+    if (!isOrderTrackerOpen || !isPaymentPending || hasPendingCustomPrice || !currentOrder || currentOrder.total <= 0 || paymentMethod !== 'promptpay') {
+      return;
+    }
+
+    let isMounted = true;
+    setIsGeneratingQr(true);
+    const billerId = settings.promptPayId || '0821062891';
+
+    generatePromptPayQrDataUrl(billerId, currentOrder.total, {
+      width: 400,
+      margin: 1,
+      darkColor: '#000000',
+      lightColor: '#ffffff',
+    })
+      .then((url) => {
+        if (isMounted) {
+          setPromptPayQrUrl(url);
+          setIsGeneratingQr(false);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to generate PromptPay QR:', err);
+        if (isMounted) {
+          setIsGeneratingQr(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    isOrderTrackerOpen,
+    isPaymentPending,
+    hasPendingCustomPrice,
+    currentOrder?.id,
+    currentOrder?.total,
+    paymentMethod,
+    settings.promptPayId,
+  ]);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showToast('กรุณาอัปโหลดไฟล์รูปภาพเท่านั้นครับ', 'error');
+      return;
+    }
+
+    try {
+      showToast('กำลังประมวลผลรูปสลิป...', 'info');
+      const compressed = await compressImageFile(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.8 });
+      setSlipImage(compressed);
+      setSlipFileName(file.name);
+      showToast('แนบสลิปการโอนเงินสำเร็จแล้ว ✨', 'success');
+    } catch (err) {
+      console.error('Failed to compress slip:', err);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setSlipImage(event.target?.result as string);
+        setSlipFileName(file.name);
+        showToast('แนบสลิปการโอนเงินเรียบร้อย', 'success');
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showToast('กรุณาอัปโหลดไฟล์รูปภาพเท่านั้นครับ', 'error');
+      return;
+    }
+
+    try {
+      showToast('กำลังประมวลผลรูปสลิป...', 'info');
+      const compressed = await compressImageFile(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.8 });
+      setSlipImage(compressed);
+      setSlipFileName(file.name);
+      showToast('แนบสลิปการโอนเงินสำเร็จแล้ว ✨', 'success');
+    } catch (err) {
+      console.error('Failed to compress slip:', err);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setSlipImage(event.target?.result as string);
+        setSlipFileName(file.name);
+        showToast('แนบสลิปการโอนเงินเรียบร้อย', 'success');
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleCopyPromptPayId = () => {
+    const rawId = settings.promptPayId || '082-106-2891';
+    navigator.clipboard.writeText(rawId.replace(/[^0-9]/g, ''));
+    setIsCopiedPromptPay(true);
+    showToast('คัดลอกหมายเลขพร้อมเพย์แล้ว 📋', 'success');
+    setTimeout(() => setIsCopiedPromptPay(false), 3000);
+  };
+
+  const handleConfirmOrderPayment = () => {
+    if (!currentOrder) return;
+
+    if (paymentMethod === 'promptpay' && !slipImage) {
+      showToast('กรุณาแนบสลิปหลักฐานการโอนเงินเพื่อยืนยันออเดอร์ครับ 📸', 'error');
+      return;
+    }
+
+    setIsSubmittingPayment(true);
+
+    try {
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#10b981', '#34d399', '#f59e0b', '#ffffff'],
+      });
+    } catch (e) {
+      console.error(e);
+    }
+
+    setTimeout(() => {
+      submitOrderPayment(currentOrder.id, paymentMethod, slipImage || undefined);
+      setIsSubmittingPayment(false);
+    }, 400);
+  };
 
   if (!isOrderTrackerOpen || !currentOrder) return null;
 
@@ -386,6 +560,292 @@ export const OrderTrackerModal: React.FC = () => {
                   ฿{currentOrder.total.toLocaleString()}
                 </span>
               </div>
+
+              {/* Payment Status & Interactive Payment Card */}
+              {isPaymentPending && (
+                <div className="pt-2">
+                  {hasPendingCustomPrice ? (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 border border-amber-500/40 space-y-3"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                          <Clock className="w-5 h-5 animate-spin" />
+                        </div>
+                        <div className="space-y-1 text-xs flex-1">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-bold text-amber-300 text-sm">
+                              รอร้านประเมินราคาเมนูพิเศษตามใจคุณ
+                            </h4>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-200 font-bold animate-pulse">
+                              กำลังตรวจสอบ...
+                            </span>
+                          </div>
+                          <p className="text-stone-300 leading-relaxed">
+                            เชฟกำลังตรวจสอบวัตถุดิบและคำนวณราคาให้คุณครับ เมื่อใส่ราคาเรียบร้อยแล้ว หน้าต่างนี้จะอัปเดตยอดเงินสุทธิและเปิดให้คุณกดเลือกวิธีชำระเงิน (พร้อมเพย์ / บัตร / เงินสด) ทันที
+                          </p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="p-4 sm:p-5 rounded-2xl bg-[#161618] border border-[#FF5C00]/50 shadow-xl space-y-4"
+                    >
+                      <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="w-5 h-5 text-[#FF5C00]" />
+                          <div>
+                            <h4 className="font-bold text-white text-sm">
+                              ร้านได้ประเมินราคาเรียบร้อยแล้ว 🎉
+                            </h4>
+                            <p className="text-[11px] text-stone-400">
+                              กรุณาเลือกช่องทางการชำระเงินเพื่อเริ่มปรุงอาหาร
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[10px] text-stone-400 uppercase font-bold">ยอดชำระสุทธิ</div>
+                          <div className="text-base font-black font-mono text-[#FF5C00]">
+                            ฿{currentOrder.total.toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Payment Method Selector */}
+                      <div className="space-y-2">
+                        <label className="text-[10px] text-stone-400 font-bold uppercase block">
+                          เลือกช่องทางชำระเงิน
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { id: 'promptpay', name: 'พร้อมเพย์ QR', icon: QrCode },
+                            { id: 'credit_card', name: 'บัตรเครดิต', icon: CreditCard },
+                            { id: 'cash', name: 'เงินสด / ปลายทาง', icon: Banknote },
+                          ].map((pm) => {
+                            const Icon = pm.icon;
+                            const isSelected = paymentMethod === pm.id;
+                            return (
+                              <button
+                                key={pm.id}
+                                type="button"
+                                onClick={() => setPaymentMethod(pm.id as PaymentMethod)}
+                                className={`relative p-2.5 rounded-xl border text-center flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-emerald-500/15 border-emerald-500 text-emerald-300 ring-2 ring-emerald-500/50 shadow-md shadow-emerald-950/40 font-bold'
+                                    : 'bg-[#0A0A0B] border-white/10 hover:border-white/25 text-stone-400'
+                                }`}
+                              >
+                                {isSelected && (
+                                  <div className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-emerald-950" />
+                                )}
+                                <Icon className={`w-4 h-4 ${isSelected ? 'text-emerald-400' : 'text-stone-400'}`} />
+                                <span className="text-xs">{pm.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* PromptPay View */}
+                      {paymentMethod === 'promptpay' && (
+                        <div className="p-4 rounded-xl bg-[#0A0A0B] border border-white/10 space-y-4">
+                          <div className="flex flex-col sm:flex-row items-center gap-4">
+                            {/* QR Code */}
+                            <div className="flex flex-col items-center shrink-0">
+                              <div className="p-3 bg-white rounded-2xl shadow-lg border border-stone-200 flex flex-col items-center w-[180px] text-stone-900">
+                                <div className="w-full bg-[#003B71] text-white py-1 px-1.5 rounded-t-lg text-center text-[10px] font-bold tracking-wider">
+                                  THAI QR PAYMENT
+                                </div>
+                                <div className="w-[150px] h-[150px] bg-white flex items-center justify-center p-1 relative">
+                                  {promptPayQrUrl && !isGeneratingQr ? (
+                                    <img
+                                      src={promptPayQrUrl}
+                                      alt="PromptPay QR"
+                                      className="w-full h-full object-contain select-all"
+                                    />
+                                  ) : (
+                                    <div className="flex flex-col items-center justify-center gap-1.5 text-stone-400">
+                                      <QrCode className="w-8 h-8 animate-pulse text-[#003B71]" />
+                                      <span className="text-[10px] font-medium text-stone-500">กำลังสร้าง QR...</span>
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-stone-600 font-mono font-bold mt-1">
+                                  {settings.promptPayId || '082-106-2891'}
+                                </div>
+                                <div className="text-xs font-black font-mono text-[#FF5C00] mt-0.5">
+                                  ฿{currentOrder.total.toLocaleString()}
+                                </div>
+                              </div>
+
+                              <div className="mt-2 flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={handleCopyPromptPayId}
+                                  className="text-[10px] font-bold text-stone-300 hover:text-white flex items-center gap-1 py-1 px-2 rounded-lg bg-white/5 hover:bg-white/10"
+                                >
+                                  {isCopiedPromptPay ? (
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                  ) : (
+                                    <Copy className="w-3 h-3" />
+                                  )}
+                                  <span>{isCopiedPromptPay ? 'คัดลอกแล้ว' : 'คัดลอกเบอร์'}</span>
+                                </button>
+                                {promptPayQrUrl && (
+                                  <a
+                                    href={promptPayQrUrl}
+                                    download={`promptpay-order-${currentOrder.orderNumber}.png`}
+                                    className="text-[10px] font-bold text-stone-300 hover:text-white flex items-center gap-1 py-1 px-2 rounded-lg bg-white/5 hover:bg-white/10"
+                                  >
+                                    <Download className="w-3 h-3" />
+                                    <span>บันทึกรูป</span>
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Slip Upload Area */}
+                            <div className="flex-1 w-full space-y-2">
+                              <label className="text-xs font-bold text-white flex items-center justify-between">
+                                <span>แนบสลิปการโอนเงิน (จำเป็น)</span>
+                                {slipImage && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSlipImage(null);
+                                      setSlipFileName('');
+                                    }}
+                                    className="text-[10px] text-rose-400 hover:text-rose-300"
+                                  >
+                                    ลบรูป
+                                  </button>
+                                )}
+                              </label>
+
+                              <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                onChange={handleFileUpload}
+                                className="hidden"
+                              />
+
+                              {slipImage ? (
+                                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2 overflow-hidden">
+                                    <img
+                                      src={slipImage}
+                                      alt="Slip"
+                                      className="w-10 h-10 rounded-lg object-cover border border-emerald-500/30"
+                                    />
+                                    <div className="truncate text-xs">
+                                      <div className="font-bold text-emerald-400 flex items-center gap-1">
+                                        <CheckCircle2 className="w-3 h-3 shrink-0" />
+                                        <span>แนบสลิปแล้ว</span>
+                                      </div>
+                                      <div className="text-[10px] text-stone-400 truncate font-mono">
+                                        {slipFileName || 'slip.png'}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="text-[10px] font-bold px-2 py-1 rounded bg-white/10 text-white hover:bg-white/20"
+                                  >
+                                    เปลี่ยน
+                                  </button>
+                                </div>
+                              ) : (
+                                <div
+                                  onDragOver={handleDragOver}
+                                  onDragLeave={handleDragLeave}
+                                  onDrop={handleDrop}
+                                  onClick={() => fileInputRef.current?.click()}
+                                  className={`p-3 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 text-center cursor-pointer transition-all ${
+                                    isDraggingOver
+                                      ? 'border-[#FF5C00] bg-[#FF5C00]/10 text-white'
+                                      : 'border-white/15 bg-white/5 hover:border-white/30 text-stone-400'
+                                  }`}
+                                >
+                                  <Upload className="w-4 h-4 text-stone-300" />
+                                  <div className="text-xs font-bold text-white">
+                                    คลิกเพื่ออัปโหลดสลิป
+                                  </div>
+                                  <div className="text-[10px] text-stone-400">
+                                    รองรับ PNG, JPG ไม่เกิน 10MB
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Credit Card View */}
+                      {paymentMethod === 'credit_card' && (
+                        <div className="p-3 rounded-xl bg-[#0A0A0B] border border-white/10 space-y-2 text-xs">
+                          <div className="text-stone-300 font-bold">ชำระผ่านบัตรเครดิต / เดบิต</div>
+                          <input
+                            type="text"
+                            defaultValue="4111 2222 3333 4444"
+                            disabled
+                            className="w-full px-3 py-1.5 rounded-lg bg-[#161618] border border-white/10 font-mono text-white text-xs"
+                          />
+                          <p className="text-[11px] text-stone-400">
+                            ระบบจะตัดบัตรยอด ฿{currentOrder.total.toLocaleString()} โดยอัตโนมัติ
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Cash View */}
+                      {paymentMethod === 'cash' && (
+                        <div className="p-3 rounded-xl bg-[#0A0A0B] border border-white/10 flex items-start gap-2.5 text-xs">
+                          <Banknote className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                          <div className="space-y-0.5 text-stone-300">
+                            <div className="font-bold text-white">ชำระด้วยเงินสด</div>
+                            <p className="text-[11px] text-stone-400">
+                              {currentOrder.orderType === 'delivery'
+                                ? 'เตรียมเงินสด ฿' + currentOrder.total.toLocaleString() + ' สำหรับชำระกับไรเดอร์'
+                                : currentOrder.orderType === 'dine_in'
+                                ? 'ชำระเงินสดกับพนักงานที่โต๊ะ ' + (currentOrder.tableNumber || '')
+                                : 'ชำระเงินสดที่เคาน์เตอร์รับอาหาร'}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Confirm Payment Button */}
+                      <button
+                        type="button"
+                        id="btn-confirm-order-tracker-payment"
+                        disabled={isSubmittingPayment}
+                        onClick={handleConfirmOrderPayment}
+                        className="w-full py-3 px-4 rounded-xl bg-[#FF5C00] hover:bg-[#FF7729] text-white font-black text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-[#FF5C00]/25 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        {isSubmittingPayment ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span>กำลังยืนยันการชำระเงิน...</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>
+                              ยืนยันการชำระเงิน (฿{currentOrder.total.toLocaleString()})
+                            </span>
+                            <ArrowRight className="w-4 h-4" />
+                          </div>
+                        )}
+                      </button>
+                    </motion.div>
+                  )}
+                </div>
+              )}
 
               {/* Uploaded Slip Info & Thumbnail if Available */}
               {currentOrder.slipImage && (
